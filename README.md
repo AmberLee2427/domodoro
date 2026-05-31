@@ -22,12 +22,16 @@ The extension uses the manifest at `domodoro/manifest.json` and the popup at `do
 
 Use this when you want the standalone app experience.
 
-1. Serve the `domodoro/pwa/` folder from `localhost` or an `https://` site.
-2. Open `pwa/index.html` in a Chromium-based browser.
-3. Wait for the app to load, then use the browser’s install button or menu item.
-4. Confirm the install when the browser prompts you.
+1. Start a local static server from the `domodoro/pwa/` folder. A simple option is:
 
-Important: the PWA will not install correctly from `file://` URLs. It needs a secure context such as `localhost` or `https://` so the service worker and WebGPU-backed model loading can work.
+	```bash
+	cd domodoro/pwa
+	python3 -m http.server 8000
+	```
+
+	Then open `http://localhost:8000/` in a Chromium-based browser. The PWA needs a secure browser context so the service worker can register and the app can use WebGPU-backed model loading. Opening the files directly with `file://` will skip those browser features and the install flow will not work correctly.
+2. Wait for the app to load, then use the browser’s install button or menu item.
+3. Confirm the install when the browser prompts you.
 
 ## What gets installed
 
