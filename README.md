@@ -1,3 +1,5 @@
+[![pages-build-deployment](https://github.com/AmberLee2427/domodoro/actions/workflows/pages/pages-build-deployment/badge.svg?branch=main)](https://github.com/AmberLee2427/domodoro/actions/workflows/pages/pages-build-deployment)
+
 # Domodoro
 
 Domodoro ships in two forms:
