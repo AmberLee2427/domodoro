@@ -3,6 +3,7 @@ import { env, pipeline } from "../transformers.js";
 const MODEL_ID = "onnx-community/gemma-4-E2B-it-ONNX";
 const MODEL_DTYPE = "q4f16";
 const MODEL_DEVICE = "webgpu";
+const FALLBACK_DEVICE = "wasm";
 const STORAGE_KEY = "domodoro-pwa-state";
 const CHAT_LOG_KEY = "chatLog";
 const CHAT_LOG_LIMIT = 20;
@@ -298,17 +299,32 @@ async function getGenerator() {
   }
 
   if (!generatorPromise) {
-    setModelStatus("Summoning Dom...", true);
-    generatorPromise = pipeline("text-generation", MODEL_ID, {
-      dtype: MODEL_DTYPE,
-      device: MODEL_DEVICE,
-      progress_callback: (info) => {
-        if (info.status === "progress") {
-          const percent = info.total ? Math.round((info.loaded / info.total) * 100) : 0;
-          setModelStatus(percent >= 100 ? "Compiling WebGPU session..." : `Downloading ${percent}%`, true);
+    const loadWithDevice = async (device, statusLabel) => {
+      setModelStatus(statusLabel, true);
+      return pipeline("text-generation", MODEL_ID, {
+        dtype: MODEL_DTYPE,
+        device,
+        progress_callback: (info) => {
+          if (info.status === "progress") {
+            const percent = info.total ? Math.round((info.loaded / info.total) * 100) : 0;
+            setModelStatus(device === "webgpu" && percent >= 100
+              ? "Compiling WebGPU session..."
+              : `Downloading ${percent}%`, true);
+          }
+        },
+      });
+    };
+
+    generatorPromise = loadWithDevice(MODEL_DEVICE, "Summoning Dom...")
+      .catch(async (error) => {
+        console.warn("WebGPU model load failed, trying WASM fallback", error);
+        if (MODEL_DEVICE !== "webgpu") {
+          throw error;
         }
-      },
-    })
+
+        setModelStatus("WebGPU failed, switching to WASM fallback...", true);
+        return loadWithDevice(FALLBACK_DEVICE, "Summoning Dom in WASM mode...");
+      })
       .then((loadedGenerator) => {
         generator = loadedGenerator;
         setModelStatus(`${MODEL_ID} is ready`);
