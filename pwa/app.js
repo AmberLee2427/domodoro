@@ -2,8 +2,8 @@ import { env, pipeline } from "../transformers.js";
 
 const MODEL_ID = "onnx-community/gemma-4-E2B-it-ONNX";
 const MODEL_DTYPE = "q4f16";
-const MODEL_DEVICE = "webgpu";
 const FALLBACK_DEVICE = "wasm";
+const MODEL_DEVICE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ? FALLBACK_DEVICE : "webgpu";
 const STORAGE_KEY = "domodoro-pwa-state";
 const CHAT_LOG_KEY = "chatLog";
 const CHAT_LOG_LIMIT = 20;
@@ -45,6 +45,7 @@ const modelStatus = document.getElementById("model-status");
 let generator;
 let generatorPromise;
 let notificationTimer;
+let loadingProgress = 0;
 let state = loadState();
 
 const CHARACTERS = {
@@ -271,11 +272,26 @@ function setModelStatus(text, loading = false) {
   sendBtn.disabled = loading;
 }
 
+function updateLoadingProgress(info, device) {
+  if (info.status !== "progress") return;
+
+  const percent = info.total ? Math.round((info.loaded / info.total) * 100) : loadingProgress;
+  const steppedPercent = Math.min(100, Math.max(loadingProgress, Math.floor(percent / 5) * 5));
+
+  if (steppedPercent <= loadingProgress) return;
+
+  loadingProgress = steppedPercent;
+  const loadingLabel = device === "webgpu" && loadingProgress >= 100
+    ? "Compiling WebGPU session..."
+    : `Downloading ${loadingProgress}%`;
+  setModelStatus(loadingLabel, true);
+}
+
 function describeError(error) {
   return error?.message || String(error || "Unknown model error");
 }
 
-function webGpuProblem() {
+function webGpuProblem(device = MODEL_DEVICE) {
   if (!env.backends?.onnx?.wasm) {
     return "Model backend did not initialize.";
   }
@@ -284,7 +300,7 @@ function webGpuProblem() {
     return "Model needs HTTPS or localhost for WebGPU.";
   }
 
-  if (!("gpu" in navigator)) {
+  if (device === "webgpu" && !("gpu" in navigator)) {
     return "WebGPU is not available in this browser.";
   }
 
@@ -299,19 +315,13 @@ async function getGenerator() {
   }
 
   if (!generatorPromise) {
+    loadingProgress = 0;
     const loadWithDevice = async (device, statusLabel) => {
       setModelStatus(statusLabel, true);
       return pipeline("text-generation", MODEL_ID, {
         dtype: MODEL_DTYPE,
         device,
-        progress_callback: (info) => {
-          if (info.status === "progress") {
-            const percent = info.total ? Math.round((info.loaded / info.total) * 100) : 0;
-            setModelStatus(device === "webgpu" && percent >= 100
-              ? "Compiling WebGPU session..."
-              : `Downloading ${percent}%`, true);
-          }
-        },
+        progress_callback: (info) => updateLoadingProgress(info, device),
       });
     };
 
@@ -333,6 +343,7 @@ async function getGenerator() {
       .catch((error) => {
         console.error("Domodoro model load failed", error);
         generatorPromise = undefined;
+        loadingProgress = 0;
         setModelStatus(describeError(error));
         throw error;
       });
