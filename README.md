@@ -33,6 +33,43 @@ Use this when you want the standalone app experience.
 2. Wait for the app to load, then use the browser’s install button or menu item.
 3. Confirm the install when the browser prompts you.
 
+## Install On Phone
+
+The phone-friendly version is the PWA, not the browser extension.
+
+### Android
+
+This is the easiest route if you are using an Android phone.
+
+1. Serve `domodoro/pwa/` from a computer on the same Wi-Fi network, or from any secure `https://` host.
+2. Open the PWA URL in Chrome on your phone.
+3. Wait for the app to finish loading, then use Chrome’s install prompt or the browser menu’s install/add-to-home-screen option.
+4. Launch it from the home screen like a normal app.
+
+### iPhone
+
+If you later try this on iPhone, use Safari instead of Chrome.
+
+1. Open the PWA URL in Safari.
+2. Tap the Share button.
+3. Choose **Add to Home Screen**.
+4. Open it from the home screen icon.
+
+### From Your Computer
+
+If you are serving from your current computer, a simple local server works fine.
+
+1. In a terminal, run:
+
+	```bash
+	cd domodoro/pwa
+	python3 -m http.server 8000
+	```
+
+2. Find your computer’s LAN IP address.
+3. On your phone, open `http://YOUR-IP:8000/` in the browser.
+4. Install the app from the browser prompt or menu.
+
 ## What gets installed
 
 - The extension adds Domodoro to the browser toolbar and runs the content/background scripts from this folder.
