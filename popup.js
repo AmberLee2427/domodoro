@@ -95,25 +95,19 @@ function setPoseSilently(pose) {
 }
 
 function renderChatEntry(entry) {
-  const kind = entry.role === 'assistant'
-    ? 'dom'
-    : entry.role === 'tool'
-      ? 'tool'
-      : entry.role === 'system'
-        ? 'system'
-        : 'user';
-  const label = entry.role === 'assistant'
-    ? 'Dom'
-    : entry.role === 'tool'
-      ? `Tool${entry.name ? `: ${entry.name}` : ''}`
-      : entry.role === 'system'
-        ? 'System'
-        : 'You';
-  return `<div class="chat-line ${kind}"><b>${escapeHtml(label)}:</b> ${escapeHtml(entry.content || '')}</div>`;
+  if (entry.role === 'user') {
+    return `<div class="chat-line user"><b>You:</b> ${escapeHtml(entry.content || '')}</div>`;
+  }
+
+  if (entry.role === 'assistant') {
+    return `<div class="chat-line dom"><b>Dom:</b> ${escapeHtml(entry.content || '')}</div>`;
+  }
+
+  return '';
 }
 
 function renderChatLog(entries) {
-  chatBox.innerHTML = entries.map(renderChatEntry).join('');
+  chatBox.innerHTML = entries.map(renderChatEntry).filter(Boolean).join('');
   chatBox.scrollTop = chatBox.scrollHeight;
 }
 
@@ -390,7 +384,7 @@ async function sendChat() {
     }
     await refreshChatLog();
   } catch (error) {
-    chatBox.innerHTML += `<div class="chat-line system"><b>System:</b> ${escapeHtml(error.message || String(error))}</div>`;
+    renderStatus({ state: 'error', detail: error.message || String(error), progress: 0 });
   } finally {
     sendBtn.disabled = false;
   }

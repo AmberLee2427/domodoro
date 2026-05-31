@@ -22,14 +22,14 @@ The extension uses the manifest at `domodoro/manifest.json` and the popup at `do
 
 Use this when you want the standalone app experience.
 
-1. Start a local static server from the `domodoro/pwa/` folder. A simple option is:
+1. Start a local static server from the `domodoro/` folder, not just `pwa/`, so the sibling `assets/` and `vendor/` folders resolve correctly. A simple option is:
 
 	```bash
-	cd domodoro/pwa
+	cd domodoro
 	python3 -m http.server 8000
 	```
 
-	Then open `http://localhost:8000/` in a Chromium-based browser. The PWA needs a secure browser context so the service worker can register and the app can use WebGPU-backed model loading. Opening the files directly with `file://` will skip those browser features and the install flow will not work correctly.
+	Then open `http://localhost:8000/pwa/` in a Chromium-based browser. The PWA needs a secure browser context so the service worker can register and the app can use WebGPU-backed model loading. Opening the files directly with `file://` will skip those browser features and the install flow will not work correctly.
 2. Wait for the app to load, then use the browser’s install button or menu item.
 3. Confirm the install when the browser prompts you.
 
@@ -39,16 +39,29 @@ The phone-friendly version is the PWA, not the browser extension.
 
 ### Android
 
-This is the easiest route if you are using an Android phone.
+Recommended for Android phones.
 
-1. Serve `domodoro/pwa/` from a computer on the same Wi-Fi network, or from any secure `https://` host.
-2. Open the PWA URL in Chrome on your phone.
-3. Wait for the app to finish loading, then use Chrome’s install prompt or the browser menu’s install/add-to-home-screen option.
-4. Launch it from the home screen like a normal app.
+1. In one terminal, run:
+
+	```bash
+	cd domodoro
+	python3 -m http.server 8000
+	```
+
+2. In a second terminal, run:
+
+	```bash
+	ngrok http 8000
+	```
+
+3. Open the `https://` forwarding URL that ngrok prints, then add `/pwa/` to the end.
+4. Open that URL in Chrome on your Android phone.
+5. Wait for the app to finish loading, then use Chrome’s install prompt or the browser menu’s install/add-to-home-screen option.
+6. Launch it from the home screen like a normal app.
 
 ### iPhone
 
-If you later try this on iPhone, use Safari instead of Chrome.
+For iPhone, use Safari instead of Chrome.
 
 1. Open the PWA URL in Safari.
 2. Tap the Share button.
@@ -57,18 +70,24 @@ If you later try this on iPhone, use Safari instead of Chrome.
 
 ### From Your Computer
 
-If you are serving from your current computer, a simple local server works fine.
+To expose the PWA over HTTPS from your computer, use ngrok.
 
 1. In a terminal, run:
 
 	```bash
-	cd domodoro/pwa
+	cd domodoro
 	python3 -m http.server 8000
 	```
 
-2. Find your computer’s LAN IP address.
-3. On your phone, open `http://YOUR-IP:8000/` in the browser.
-4. Install the app from the browser prompt or menu.
+2. In another terminal, run:
+
+	```bash
+	ngrok http 8000
+	```
+
+3. Copy the `https://` forwarding URL ngrok gives you.
+4. On your phone, open `https://YOUR-NGROK-URL/pwa/` in the browser.
+5. Install the app from the browser prompt or menu.
 
 ## What gets installed
 
