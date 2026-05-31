@@ -3,7 +3,11 @@ import { env, pipeline } from "../transformers.js";
 const MODEL_ID = "onnx-community/gemma-4-E2B-it-ONNX";
 const MODEL_DTYPE = "q4f16";
 const FALLBACK_DEVICE = "wasm";
-const MODEL_DEVICE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ? FALLBACK_DEVICE : "webgpu";
+const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+const HAS_WEBGPU = "gpu" in navigator;
+const MODEL_DEVICE = HAS_WEBGPU && window.isSecureContext ? "webgpu" : FALLBACK_DEVICE;
+const MODEL_DOWNLOAD_BYTES = 3.3 * 1024 * 1024 * 1024;
+const MODEL_STORAGE_HEADROOM = 1.35;
 const STORAGE_KEY = "domodoro-pwa-state";
 const CHAT_LOG_KEY = "chatLog";
 const CHAT_LOG_LIMIT = 20;
@@ -46,6 +50,7 @@ let generator;
 let generatorPromise;
 let notificationTimer;
 let loadingProgress = 0;
+let activeModelDevice = MODEL_DEVICE;
 let state = loadState();
 
 const CHARACTERS = {
@@ -272,6 +277,28 @@ function setModelStatus(text, loading = false) {
   sendBtn.disabled = loading;
 }
 
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes)) return "unknown";
+  const gib = bytes / 1024 / 1024 / 1024;
+  if (gib >= 1) return `${gib.toFixed(1)} GB`;
+  return `${Math.ceil(bytes / 1024 / 1024)} MB`;
+}
+
+function quotaErrorMessage(available, needed, quota, usage, persisted) {
+  const prefix = IS_MOBILE
+    ? "Dom is too powerful for this phone browser."
+    : "Dom needs more browser storage.";
+
+  return [
+    prefix,
+    `Need about ${formatBytes(needed)} free for ${MODEL_ID}.`,
+    `Browser quota: ${formatBytes(quota)}.`,
+    `Already used: ${formatBytes(usage)}.`,
+    `Available: ${formatBytes(available)}.`,
+    `Persistent storage: ${persisted ? "granted" : "not granted"}.`,
+  ].join(" ");
+}
+
 function updateLoadingProgress(info, device) {
   if (info.status !== "progress") return;
 
@@ -296,7 +323,7 @@ function webGpuProblem(device = MODEL_DEVICE) {
     return "Model backend did not initialize.";
   }
 
-  if (!window.isSecureContext) {
+  if (device === "webgpu" && !window.isSecureContext) {
     return "Model needs HTTPS or localhost for WebGPU.";
   }
 
@@ -305,6 +332,85 @@ function webGpuProblem(device = MODEL_DEVICE) {
   }
 
   return "";
+}
+
+async function requestPersistentStorage() {
+  if (!navigator.storage?.persist) return false;
+  try {
+    return await navigator.storage.persist();
+  } catch {
+    return false;
+  }
+}
+
+async function ensureStorageRoom() {
+  const needed = MODEL_DOWNLOAD_BYTES * MODEL_STORAGE_HEADROOM;
+
+  if (!navigator.storage?.estimate) {
+    if (IS_MOBILE) {
+      throw new Error(
+        "Dom is too powerful for this phone browser. " +
+        `It cannot report storage quota, and ${MODEL_ID} needs about ${formatBytes(needed)} free.`,
+      );
+    }
+    return;
+  }
+
+  const estimate = await navigator.storage.estimate();
+  const quota = estimate.quota || 0;
+  const usage = estimate.usage || 0;
+  const available = quota ? quota - usage : 0;
+  const persistedBefore = navigator.storage.persisted
+    ? await navigator.storage.persisted().catch(() => false)
+    : false;
+
+  if (!quota || available >= needed) return;
+
+  const persistedAfterRequest = await requestPersistentStorage();
+  const refreshed = await navigator.storage.estimate();
+  const refreshedQuota = refreshed.quota || 0;
+  const refreshedUsage = refreshed.usage || 0;
+  const refreshedAvailable = refreshedQuota - refreshedUsage;
+  const persistedAfter = navigator.storage.persisted
+    ? await navigator.storage.persisted().catch(() => persistedAfterRequest)
+    : persistedAfterRequest || persistedBefore;
+
+  if (refreshedAvailable < needed) {
+    throw new Error(quotaErrorMessage(
+      refreshedAvailable,
+      needed,
+      refreshedQuota,
+      refreshedUsage,
+      persistedAfter,
+    ));
+  }
+}
+
+async function showStorageDiagnostics() {
+  const needed = MODEL_DOWNLOAD_BYTES * MODEL_STORAGE_HEADROOM;
+
+  if (!navigator.storage?.estimate) {
+    setModelStatus(
+      `Storage quota unavailable. ${MODEL_ID} needs about ${formatBytes(needed)} free.`,
+    );
+    return;
+  }
+
+  const estimate = await navigator.storage.estimate();
+  const persisted = navigator.storage.persisted
+    ? await navigator.storage.persisted().catch(() => false)
+    : false;
+  const quota = estimate.quota || 0;
+  const usage = estimate.usage || 0;
+  const available = quota ? quota - usage : 0;
+
+  if (available < needed) {
+    setModelStatus(quotaErrorMessage(available, needed, quota, usage, persisted));
+  } else {
+    setModelStatus(
+      `Browser storage looks plausible. Need about ${formatBytes(needed)} free; available ${formatBytes(available)}.`,
+    );
+  }
 }
 
 async function getGenerator() {
@@ -317,7 +423,9 @@ async function getGenerator() {
   if (!generatorPromise) {
     loadingProgress = 0;
     const loadWithDevice = async (device, statusLabel) => {
+      activeModelDevice = device;
       setModelStatus(statusLabel, true);
+      await ensureStorageRoom();
       return pipeline("text-generation", MODEL_ID, {
         dtype: MODEL_DTYPE,
         device,
@@ -327,6 +435,10 @@ async function getGenerator() {
 
     generatorPromise = loadWithDevice(MODEL_DEVICE, "Summoning Dom...")
       .catch(async (error) => {
+        if (/Dom is too powerful|storage/i.test(String(error.message || error))) {
+          throw error;
+        }
+
         console.warn("WebGPU model load failed, trying WASM fallback", error);
         if (MODEL_DEVICE !== "webgpu") {
           throw error;
@@ -337,7 +449,7 @@ async function getGenerator() {
       })
       .then((loadedGenerator) => {
         generator = loadedGenerator;
-        setModelStatus(`${MODEL_ID} is ready`);
+        setModelStatus(`${MODEL_ID} is ready (${activeModelDevice})`);
         return loadedGenerator;
       })
       .catch((error) => {
@@ -601,4 +713,6 @@ renderChatLog();
 const startupProblem = webGpuProblem();
 if (startupProblem) {
   setModelStatus(startupProblem);
+} else if (IS_MOBILE) {
+  showStorageDiagnostics().catch(() => {});
 }

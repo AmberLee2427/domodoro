@@ -40,7 +40,9 @@ For iPhone, use Safari instead of Chrome.
 ### Notes
 
 - The phone install is for the PWA only. The Chrome extension still only installs on desktop browsers.
-- The app is designed for Chromium browsers with WebGPU support.
+- The PWA uses `onnx-community/gemma-4-E2B-it-ONNX` locally. The Gemma 4 ONNX bundle is over 3 GB in-browser and can exceed mobile browser storage or memory limits.
+- Before summoning Dom, the PWA checks browser storage quota and reports the exact quota/usage/available numbers when a phone browser cannot fit the model.
+- Chromium browsers with WebGPU support will run the model faster. Other browsers fall back to WASM when possible.
 
 ## What gets installed
 
