@@ -326,6 +326,11 @@
       color: var(--muted);
     }
 
+    .chat-line.tool {
+      color: var(--lavender-deep);
+      font-style: italic;
+    }
+
     .chat-panel {
       min-height: 560px;
       overflow: hidden;
@@ -363,6 +368,10 @@
       object-position: center;
       border: 1px solid var(--line);
       background: rgba(255, 255, 255, 0.58);
+    }
+
+    .postit {
+      background: linear-gradient(180deg, #fffdf4, #fff9e8);
     }
 
     #todo-note {
@@ -450,15 +459,15 @@
             <button id="pause-btn">Pause</button>
             <button id="reset-btn">Reset</button>
           </div>
+        </section>
+
+        <section class="panel outfit-panel" data-title="Outfit Rewards">
+          <img class="outfit-chart" src="../assets/outfits.png" alt="Domodoro outfit unlock rewards">
           <div class="progress-track"><div id="character-progress-bar"></div></div>
           <div class="progress-copy">
             <span id="session-count">0 sessions</span>
             <span id="next-unlock">Next unlock: 25</span>
           </div>
-        </section>
-
-        <section class="panel outfit-panel" data-title="Outfit Rewards">
-          <img class="outfit-chart" src="../assets/outfits.png" alt="Domodoro outfit unlock rewards">
         </section>
       </div>
 

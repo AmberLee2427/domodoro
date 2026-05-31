@@ -197,11 +197,25 @@ async function maybeInterruptBlacklistedSite(force = false) {
   if (lastSeen && Date.now() - lastSeen < BLACKLIST_COOLDOWN_MS) return;
   sessionStorage.setItem(key, String(Date.now()));
 
-  showDomodoroPopup({
-    message: blacklistMessage(),
-    pose: blacklistPose(),
-    character: data.outfit || "default",
-  });
+  try {
+    const response = await chrome.runtime.sendMessage({
+      action: "generate_interrupt",
+      site: location.hostname,
+      url: location.href,
+    });
+
+    showDomodoroPopup({
+      message: response?.text || blacklistMessage(),
+      pose: response?.pose || blacklistPose(),
+      character: data.outfit || "default",
+    });
+  } catch {
+    showDomodoroPopup({
+      message: blacklistMessage(),
+      pose: blacklistPose(),
+      character: data.outfit || "default",
+    });
+  }
 }
 
 chrome.runtime.onMessage.addListener((request) => {

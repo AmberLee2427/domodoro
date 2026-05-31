@@ -4,6 +4,8 @@ const MODEL_ID = "onnx-community/gemma-4-E2B-it-ONNX";
 const MODEL_DTYPE = "q4f16";
 const MODEL_DEVICE = "webgpu";
 const STORAGE_KEY = "domodoro-pwa-state";
+const CHAT_LOG_KEY = "chatLog";
+const CHAT_LOG_LIMIT = 20;
 const POSES = ["default", "thinking", "stern", "pointing", "approval", "beckon"];
 
 env.allowLocalModels = false;
@@ -89,6 +91,7 @@ function loadState() {
     pose: normalizePose(saved.pose),
     todo: saved.todo || "",
     completedSessions: Number.isFinite(saved.completedSessions) ? saved.completedSessions : 0,
+    chatLog: Array.isArray(saved.chatLog) ? saved.chatLog.slice(-CHAT_LOG_LIMIT) : [],
     endAt: null,
   };
 }
@@ -103,6 +106,7 @@ function saveState() {
     pose: state.pose,
     todo: state.todo,
     completedSessions: state.completedSessions,
+    chatLog: state.chatLog,
   }));
 }
 
@@ -140,6 +144,52 @@ function setPose(pose) {
   state.pose = normalizePose(pose);
   domPortrait.src = posePath(state.character, state.pose);
   saveState();
+}
+
+function normalizeChatEntry(entry) {
+  return {
+    role: ["user", "assistant", "tool", "system"].includes(entry?.role) ? entry.role : "system",
+    name: entry?.name || "",
+    pose: entry?.pose !== undefined && entry?.pose !== null ? normalizePose(entry.pose) : undefined,
+    content: String(entry?.content || "").trim(),
+    timestamp: Number.isFinite(entry?.timestamp) ? entry.timestamp : Date.now(),
+  };
+}
+
+function formatChatEntry(entry) {
+  if (entry.role === "user") return `You: ${entry.content}`;
+  if (entry.role === "assistant") return `Dom: ${entry.content}`;
+  if (entry.role === "tool") return `Tool ${entry.name || "tool"}: ${entry.content}`;
+  return `System: ${entry.content}`;
+}
+
+function renderChatEntry(entry) {
+  const kind = entry.role === "assistant"
+    ? "dom"
+    : entry.role === "tool"
+      ? "tool"
+      : entry.role === "system"
+        ? "system"
+        : "user";
+  const label = entry.role === "assistant"
+    ? "Dom"
+    : entry.role === "tool"
+      ? `Tool${entry.name ? `: ${entry.name}` : ""}`
+      : entry.role === "system"
+        ? "System"
+        : "You";
+  return `<div class="chat-line ${kind}"><b>${escapeHtml(label)}:</b> ${escapeHtml(entry.content || "")}</div>`;
+}
+
+function renderChatLog() {
+  chatBox.innerHTML = state.chatLog.map(renderChatEntry).join("");
+  chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+function appendChatEntry(entry) {
+  state.chatLog = state.chatLog.concat(normalizeChatEntry(entry)).slice(-CHAT_LOG_LIMIT);
+  saveState();
+  renderChatLog();
 }
 
 function formatTime(ms) {
@@ -288,6 +338,7 @@ function buildMessages(userMessage) {
       content:
         "You are Domodoro, a dramatic productivity coach for a Pomodoro timer. " +
         "Keep responses short, theatrical, possessive, and commanding, but stay PG-13. " +
+        "You will receive the full chat log and latest request in the user message. " +
         `You must choose one pose from: ${POSES.join(", ")}. ` +
         "Respond with compact JSON only, exactly like {\"pose\":\"stern\",\"text\":\"Back to work, trouble.\"}. " +
         "No markdown and no extra keys.",
@@ -363,6 +414,24 @@ function contextBlock() {
   ].join("\n");
 }
 
+function chatLogBlock() {
+  return state.chatLog.length > 0
+    ? state.chatLog.map(formatChatEntry).join("\n")
+    : "No prior messages.";
+}
+
+function buildConversationPrompt(requestText) {
+  return [
+    contextBlock(),
+    "Full chat log:",
+    chatLogBlock(),
+    "",
+    `Latest request: ${requestText}`,
+    `Choose one pose from ${POSES.join(", ")} and return JSON only: {\"pose\":\"default\",\"text\":\"...\"}.`,
+    "No markdown and no extra keys.",
+  ].join("\n");
+}
+
 function notify(text) {
   if ("Notification" in window && Notification.permission === "granted") {
     new Notification("Domodoro", {
@@ -374,22 +443,25 @@ function notify(text) {
 
 async function handleSessionComplete() {
   const completedMode = state.mode;
-  const prompt = completedMode === "work"
-    ? `${contextBlock()}\nThe user finished a ${state.workMinutes} minute focus session. Tell them to take a ${state.breakMinutes} minute break now.`
-    : `${contextBlock()}\nThe user's ${state.breakMinutes} minute break is over. Tell them to get back to work now.`;
+  const requestText = completedMode === "work"
+    ? `Timer event: the user finished a ${state.workMinutes} minute focus session and should take a ${state.breakMinutes} minute break now.`
+    : `Timer event: the user's ${state.breakMinutes} minute break is over and they should get back to work now.`;
+
+  appendChatEntry({ role: "system", content: requestText });
 
   let reply = {
     text: completedMode === "work" ? "Break time, trouble." : "Back to work, trouble.",
     pose: "default",
   };
   try {
-    reply = await generateLine(prompt);
+    reply = await generateLine(buildConversationPrompt(requestText));
   } catch (error) {
     setModelStatus(describeError(error));
   }
 
   setPose(reply.pose);
-  appendChat("Dom", reply.text);
+  appendChatEntry({ role: "assistant", content: reply.text, pose: reply.pose });
+  appendChatEntry({ role: "tool", name: "set_pose", content: reply.pose });
   notify(reply.text);
   if (completedMode === "work") {
     state.completedSessions += 1;
@@ -443,16 +515,17 @@ async function sendChat() {
   const text = chatInput.value.trim();
   if (!text) return;
 
-  appendChat("You", text);
+  appendChatEntry({ role: "user", content: text });
   chatInput.value = "";
   sendBtn.disabled = true;
 
   try {
-    const reply = await generateLine(`${contextBlock()}\nReply to this user message: ${text}`);
+    const reply = await generateLine(buildConversationPrompt(text));
     setPose(reply.pose);
-    appendChat("Dom", reply.text);
+    appendChatEntry({ role: "assistant", content: reply.text, pose: reply.pose });
+    appendChatEntry({ role: "tool", name: "set_pose", content: reply.pose });
   } catch (error) {
-    appendChat("System", describeError(error));
+    appendChatEntry({ role: "system", content: describeError(error) });
   } finally {
     sendBtn.disabled = false;
   }
@@ -502,6 +575,7 @@ if ("Notification" in window && Notification.permission === "default") {
 }
 
 render();
+renderChatLog();
 
 const startupProblem = webGpuProblem();
 if (startupProblem) {

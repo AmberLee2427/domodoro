@@ -1,5 +1,8 @@
 const SESSION_ALARM = "domodoro-session";
 const OFFSCREEN_URL = "offscreen.html";
+const CHAT_LOG_KEY = "domodoro-chat-log";
+const LAST_POSE_KEY = "domodoro-last-pose";
+const CHAT_LOG_LIMIT = 20;
 const DEFAULT_WORK_MINUTES = 25;
 const DEFAULT_BREAK_MINUTES = 5;
 const DEFAULT_BLACKLIST = [
@@ -107,6 +110,62 @@ function characterSummary(key) {
 
 function characterFolder(key) {
   return (CHARACTERS[key] || CHARACTERS.default).folder;
+}
+
+function normalizeChatEntry(entry) {
+  return {
+    role: ["user", "assistant", "tool", "system"].includes(entry?.role) ? entry.role : "system",
+    name: entry?.name || "",
+    pose: entry?.pose !== undefined && entry?.pose !== null ? normalizePose(entry.pose) : undefined,
+    content: String(entry?.content || "").trim(),
+    timestamp: Number.isFinite(entry?.timestamp) ? entry.timestamp : Date.now(),
+  };
+}
+
+function formatChatEntry(entry) {
+  if (entry.role === "user") return `You: ${entry.content}`;
+  if (entry.role === "assistant") return `Dom: ${entry.content}`;
+  if (entry.role === "tool") return `Tool ${entry.name || "tool"}: ${entry.content}`;
+  return `System: ${entry.content}`;
+}
+
+function buildConversationPrompt(chatLog, requestText, persona, outfit, todo) {
+  const transcript = chatLog.length > 0
+    ? chatLog.map(formatChatEntry).join("\n")
+    : "No prior messages.";
+  const taskNote = String(todo || "").trim() || "No written task note. Improvise from the timer.";
+
+  return [
+    `Persona: ${persona}. Outfit: ${outfit}.`,
+    `User's sticky note: ${taskNote}`,
+    "You are continuing a running chat log. Use the full transcript for context and continuity.",
+    "The transcript includes user messages, assistant replies, and tool calls.",
+    "",
+    "Full chat log:",
+    transcript,
+    "",
+    `Latest request: ${requestText}`,
+    `Choose one pose from ${POSES.join(", ")} and return JSON only: {\"pose\":\"default\",\"text\":\"...\"}.`,
+    "No markdown and no extra keys.",
+  ].join("\n");
+}
+
+async function getChatLog() {
+  const data = await chrome.storage.local.get([CHAT_LOG_KEY]);
+  return Array.isArray(data[CHAT_LOG_KEY]) ? data[CHAT_LOG_KEY].map(normalizeChatEntry) : [];
+}
+
+async function appendChatEntries(entries) {
+  const currentLog = await getChatLog();
+  const normalizedEntries = entries.map(normalizeChatEntry);
+  const nextLog = currentLog.concat(normalizedEntries).slice(-CHAT_LOG_LIMIT);
+  const update = { [CHAT_LOG_KEY]: nextLog };
+  const lastPoseEntry = [...normalizedEntries].reverse().find((entry) => entry.pose && entry.role !== "tool");
+  if (lastPoseEntry) {
+    update[LAST_POSE_KEY] = lastPoseEntry.pose;
+  }
+  await chrome.storage.local.set(update);
+  return nextLog;
 }
 
 function canInjectIntoTab(tab) {
@@ -286,19 +345,28 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     if (!state.isActive || !state.running) return;
 
     try {
-      const prefs = await chrome.storage.local.get(['persona', 'outfit']);
+      const prefs = await chrome.storage.local.get(['persona', 'outfit', 'todo']);
       const customPersona = prefs.persona || "An overbearing, possessive shadow daddy who calls me trouble.";
       const outfit = characterSummary(prefs.outfit);
+      const todo = prefs.todo || "";
       const completedMode = state.mode;
       const nextMode = completedMode === "work" ? "break" : "work";
       const nextDuration = modeDurationMinutes(state, nextMode);
+      const transitionRequest = completedMode === "work"
+        ? `Timer event: the user finished a ${state.workMinutes} minute focus session and should take a ${state.breakMinutes} minute break now.`
+        : `Timer event: the user's ${state.breakMinutes} minute break is over and they should get back to work now.`;
       let reply;
 
       try {
+        await appendChatEntries([
+          {
+            role: "system",
+            content: transitionRequest,
+          },
+        ]);
+        const chatLog = await getChatLog();
         reply = await generateDomodoroReply(
-          completedMode === "work"
-            ? `Persona: ${customPersona}. Outfit: ${outfit}. The user finished a ${state.workMinutes} minute focus session. Tell them to take a ${state.breakMinutes} minute break now.`
-            : `Persona: ${customPersona}. Outfit: ${outfit}. The user's ${state.breakMinutes} minute break is over. Tell them to get back to work now.`,
+          buildConversationPrompt(chatLog, transitionRequest, customPersona, outfit, todo),
         );
       } catch {
         reply = {
@@ -309,6 +377,18 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
         };
       }
 
+      await appendChatEntries([
+        {
+          role: "assistant",
+          content: reply.text,
+          pose: reply.pose,
+        },
+        {
+          role: "tool",
+          name: "set_pose",
+          content: reply.pose,
+        },
+      ]);
       await notifyActiveTab(reply.text, reply.pose, prefs.outfit);
       if (completedMode === "work") {
         await chrome.storage.local.set({
@@ -329,20 +409,94 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "route_chat") {
     (async () => {
       try {
-        const prefs = await chrome.storage.local.get(['persona', 'outfit']);
+        const prefs = await chrome.storage.local.get(['persona', 'outfit', 'todo']);
         const customPersona = prefs.persona || "An overbearing, possessive shadow daddy who calls me trouble.";
         const outfit = characterSummary(prefs.outfit);
+        const todo = prefs.todo || "";
+        await appendChatEntries([
+          {
+            role: "user",
+            content: request.text,
+          },
+        ]);
+        const chatLog = await getChatLog();
 
         const reply = await generateDomodoroReply(
-          `Persona: ${customPersona}. Outfit: ${outfit}. Reply to this user message: ${request.text}`,
+          buildConversationPrompt(chatLog, request.text, customPersona, outfit, todo),
         );
+
+        await appendChatEntries([
+          {
+            role: "assistant",
+            content: reply.text,
+            pose: reply.pose,
+          },
+          {
+            role: "tool",
+            name: "set_pose",
+            content: reply.pose,
+          },
+        ]);
 
         sendResponse({ text: reply.text, pose: reply.pose });
       } catch (error) {
+        await appendChatEntries([
+          {
+            role: "system",
+            content: `System malfunction: ${error.message || String(error)}`,
+          },
+        ]).catch(() => {});
         sendResponse({ text: `*System malfunction:* ${error.message || String(error)}` });
       }
     })();
     return true; // Keep channel open for async response
+  }
+
+  if (request.action === "generate_interrupt") {
+    (async () => {
+      try {
+        const prefs = await chrome.storage.local.get(['persona', 'outfit', 'todo']);
+        const customPersona = prefs.persona || "An overbearing, possessive shadow daddy who calls me trouble.";
+        const outfit = characterSummary(prefs.outfit);
+        const todo = prefs.todo || "";
+        const interruptRequest = `Site interrupt: The user is on ${request.site || request.url || "a blocked site"}. Tell them to close the tab and return to their task.`;
+
+        await appendChatEntries([
+          {
+            role: "system",
+            content: interruptRequest,
+          },
+        ]);
+        const chatLog = await getChatLog();
+
+        const reply = await generateDomodoroReply(
+          buildConversationPrompt(chatLog, interruptRequest, customPersona, outfit, todo),
+          90,
+        );
+
+        await appendChatEntries([
+          {
+            role: "assistant",
+            content: reply.text,
+            pose: reply.pose,
+          },
+          {
+            role: "tool",
+            name: "set_pose",
+            content: reply.pose,
+          },
+        ]);
+
+        sendResponse({ text: reply.text, pose: reply.pose });
+      } catch (error) {
+        sendResponse({
+          text: `Forbidden site detected. Close the tab, trouble.`,
+          pose: "stern",
+          error: error.message || String(error),
+        });
+      }
+    })();
+    return true;
   }
 
   if (request.action === "get_model_status") {

@@ -12,9 +12,16 @@ const warmBtn = document.getElementById('warm-btn');
 const chatInput = document.getElementById('chat-input');
 const chatBox = document.getElementById('chat-box');
 const modelStatus = document.getElementById('model-status');
+const CHAT_LOG_KEY = 'domodoro-chat-log';
+const LAST_POSE_KEY = 'domodoro-last-pose';
+const TODO_KEY = 'todo';
 const outfitSelect = document.getElementById('outfit-select');
 const avatarImg = document.getElementById('avatar-img');
 const characterStandee = document.getElementById('character-standee');
+const outfitProgressBar = document.getElementById('outfit-progress-bar');
+const outfitProgressLabel = document.getElementById('outfit-progress-label');
+const outfitNextUnlock = document.getElementById('outfit-next-unlock');
+const todoInput = document.getElementById('todo-input');
 const blacklistToggle = document.getElementById('blacklist-toggle');
 const blacklistInput = document.getElementById('blacklist-input');
 const POSES = ['default', 'thinking', 'stern', 'pointing', 'approval', 'beckon'];
@@ -79,6 +86,44 @@ function headshotPath(characterKey = outfitSelect.value) {
 function setPose(pose) {
   currentPose = normalizePose(pose);
   characterStandee.src = posePath(outfitSelect.value, currentPose);
+  chrome.storage.local.set({ [LAST_POSE_KEY]: currentPose });
+}
+
+function setPoseSilently(pose) {
+  currentPose = normalizePose(pose);
+  characterStandee.src = posePath(outfitSelect.value, currentPose);
+}
+
+function renderChatEntry(entry) {
+  const kind = entry.role === 'assistant'
+    ? 'dom'
+    : entry.role === 'tool'
+      ? 'tool'
+      : entry.role === 'system'
+        ? 'system'
+        : 'user';
+  const label = entry.role === 'assistant'
+    ? 'Dom'
+    : entry.role === 'tool'
+      ? `Tool${entry.name ? `: ${entry.name}` : ''}`
+      : entry.role === 'system'
+        ? 'System'
+        : 'You';
+  return `<div class="chat-line ${kind}"><b>${escapeHtml(label)}:</b> ${escapeHtml(entry.content || '')}</div>`;
+}
+
+function renderChatLog(entries) {
+  chatBox.innerHTML = entries.map(renderChatEntry).join('');
+  chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+async function refreshChatLog() {
+  const data = await chrome.storage.local.get([CHAT_LOG_KEY, LAST_POSE_KEY]);
+  const entries = Array.isArray(data[CHAT_LOG_KEY]) ? data[CHAT_LOG_KEY] : [];
+  renderChatLog(entries);
+  if (data[LAST_POSE_KEY]) {
+    setPoseSilently(data[LAST_POSE_KEY]);
+  }
 }
 
 let timerState = {
@@ -94,6 +139,17 @@ let timerState = {
 function renderCharacters() {
   const completedSessions = timerState.completedSessions || 0;
   const selected = CHARACTERS[outfitSelect.value] || CHARACTERS.default;
+  const upcomingUnlock = Object.values(CHARACTERS)
+    .filter((item) => item.unlockAt > completedSessions)
+    .sort((a, b) => a.unlockAt - b.unlockAt)[0];
+  const previousUnlockAt = Object.values(CHARACTERS)
+    .filter((item) => item.unlockAt <= completedSessions)
+    .reduce((max, item) => Math.max(max, item.unlockAt), 0);
+  const targetUnlockAt = (upcomingUnlock?.unlockAt ?? completedSessions) || 1;
+  const progressRange = Math.max(1, targetUnlockAt - previousUnlockAt);
+  const progress = upcomingUnlock
+    ? ((completedSessions - previousUnlockAt) / progressRange) * 100
+    : 100;
 
   for (const option of outfitSelect.options) {
     const character = CHARACTERS[option.value];
@@ -111,6 +167,18 @@ function renderCharacters() {
 
   avatarImg.src = headshotPath(outfitSelect.value);
   characterStandee.src = posePath(outfitSelect.value, currentPose);
+
+  if (outfitProgressBar) {
+    outfitProgressBar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
+  }
+  if (outfitProgressLabel) {
+    outfitProgressLabel.textContent = `${completedSessions} sessions`;
+  }
+  if (outfitNextUnlock) {
+    outfitNextUnlock.textContent = upcomingUnlock
+      ? `Next: ${upcomingUnlock.label} at ${upcomingUnlock.unlockAt}`
+      : 'All outfits unlocked';
+  }
 }
 
 avatarImg.addEventListener('error', () => {
@@ -240,6 +308,7 @@ chrome.storage.local.get([
   'isActive',
   'outfit',
   'persona',
+  'todo',
   'completedSessions',
   'blacklistEnabled',
   'blacklistedSites',
@@ -248,11 +317,20 @@ chrome.storage.local.get([
   if (data.completedSessions !== undefined) timerState.completedSessions = data.completedSessions;
   if (data.outfit) outfitSelect.value = data.outfit;
   if (data.persona) document.getElementById('persona-input').value = data.persona;
+  if (data.todo) todoInput.value = data.todo;
   blacklistToggle.checked = data.blacklistEnabled !== false;
   blacklistInput.value = Array.isArray(data.blacklistedSites) && data.blacklistedSites.length
     ? data.blacklistedSites.join('\n')
     : DEFAULT_BLACKLIST.join('\n');
   renderCharacters();
+  refreshChatLog().catch(() => {});
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== 'local') return;
+  if (changes[CHAT_LOG_KEY] || changes[LAST_POSE_KEY]) {
+    refreshChatLog().catch(() => {});
+  }
 });
 
 activeToggle.addEventListener('change', async (event) => {
@@ -276,6 +354,10 @@ document.getElementById('persona-input').addEventListener('input', (event) => {
   chrome.storage.local.set({ persona: event.target.value });
 });
 
+todoInput.addEventListener('input', (event) => {
+  chrome.storage.local.set({ [TODO_KEY]: event.target.value });
+});
+
 blacklistToggle.addEventListener('change', (event) => {
   chrome.storage.local.set({ blacklistEnabled: event.target.checked });
 });
@@ -291,8 +373,9 @@ blacklistInput.addEventListener('input', (event) => {
 async function sendChat() {
   if (!chatInput.value.trim()) return;
 
-  chatBox.innerHTML += `<div class="chat-line user"><b>You:</b> ${escapeHtml(chatInput.value)}</div>`;
   const userMsg = chatInput.value;
+  chatBox.innerHTML += `<div class="chat-line user"><b>You:</b> ${escapeHtml(userMsg)}</div>`;
+  chatBox.scrollTop = chatBox.scrollHeight;
   chatInput.value = '';
   sendBtn.disabled = true;
 
@@ -302,9 +385,10 @@ async function sendChat() {
       text: userMsg,
     });
 
-    setPose(response.pose);
-    chatBox.innerHTML += `<div class="chat-line dom"><b>Dom:</b> ${escapeHtml(response.text)}</div>`;
-    chatBox.scrollTop = chatBox.scrollHeight;
+    if (response?.pose) {
+      setPoseSilently(response.pose);
+    }
+    await refreshChatLog();
   } catch (error) {
     chatBox.innerHTML += `<div class="chat-line system"><b>System:</b> ${escapeHtml(error.message || String(error))}</div>`;
   } finally {

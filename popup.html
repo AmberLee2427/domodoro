@@ -286,6 +286,54 @@
       padding-bottom: 9px;
     }
 
+    .progress-track {
+      height: 12px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.7);
+      margin-top: 10px;
+      padding: 2px;
+    }
+
+    #outfit-progress-bar {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, var(--lavender), var(--heart));
+    }
+
+    .progress-copy {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .postit {
+      background: #fff8df;
+      border-color: #d6c7a6;
+      transform: rotate(-1deg);
+      box-shadow: 4px 6px 0 rgba(140, 114, 173, 0.13);
+    }
+
+    .postit::before {
+      content: "Context Note";
+      background: #eadfc3;
+      border-color: #d6c7a6;
+    }
+
+    #todo-input {
+      min-height: 118px;
+      background:
+        linear-gradient(transparent 31px, rgba(214, 199, 166, 0.5) 32px),
+        rgba(255, 252, 237, 0.9);
+      background-size: 100% 32px;
+      line-height: 32px;
+      resize: vertical;
+    }
+
     .outfit-chart {
       display: block;
       width: 100%;
@@ -306,6 +354,11 @@
 
     .chat-line.system {
       color: var(--muted);
+    }
+
+    .chat-line.tool {
+      color: var(--lavender-deep);
+      font-style: italic;
     }
 
     .avatar-row {
@@ -377,6 +430,11 @@
     <textarea id="persona-input" rows="2">An overbearing, possessive shadow daddy who calls me trouble.</textarea>
   </section>
 
+  <section class="panel postit" data-title="Context Note">
+    <label for="todo-input">Today's Terms</label>
+    <textarea id="todo-input" rows="2" placeholder="- Finish the thing&#10;- Drink water&#10;- No tab wandering"></textarea>
+  </section>
+
   <section class="panel" data-title="Site Discipline">
     <label><input type="checkbox" id="blacklist-toggle" checked> Interrupt forbidden sites</label>
     <label for="blacklist-input">Blacklist</label>
@@ -395,6 +453,13 @@
 
   <section class="panel outfit-panel" data-title="Outfit Rewards">
     <img class="outfit-chart" src="assets/outfits.png" alt="Domodoro outfit unlock rewards">
+    <div class="progress-track" aria-hidden="true">
+      <div id="outfit-progress-bar"></div>
+    </div>
+    <div class="progress-copy">
+      <span id="outfit-progress-label">0 sessions</span>
+      <span id="outfit-next-unlock">Next: Default at 0</span>
+    </div>
   </section>
 
   <script src="popup.js"></script>
