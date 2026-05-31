@@ -109,6 +109,10 @@ function characterFolder(key) {
   return (CHARACTERS[key] || CHARACTERS.default).folder;
 }
 
+function canInjectIntoTab(tab) {
+  return Boolean(tab?.id && /^https?:\/\//.test(tab.url || ""));
+}
+
 function parseDomodoroReply(rawText) {
   const raw = String(rawText || "")
     .replace(/^```(?:json)?/i, "")
@@ -223,14 +227,27 @@ async function resetTimer(mode = "work") {
 
 async function notifyActiveTab(message, pose = "default", character = "default") {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab?.id) {
-    const maybePromise = chrome.tabs.sendMessage(tab.id, {
-      action: "display_clippy",
-      message,
-      pose: normalizePose(pose),
-      character: characterFolder(character),
-    });
-    maybePromise?.catch?.(() => {});
+  if (!canInjectIntoTab(tab)) return;
+
+  const payload = {
+    action: "display_clippy",
+    message,
+    pose: normalizePose(pose),
+    character: characterFolder(character),
+  };
+
+  try {
+    await chrome.tabs.sendMessage(tab.id, payload);
+  } catch {
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ["content.js"],
+      });
+      await chrome.tabs.sendMessage(tab.id, payload);
+    } catch {
+      // Some pages, like browser-owned pages, cannot receive content scripts.
+    }
   }
 }
 
@@ -275,12 +292,22 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
       const completedMode = state.mode;
       const nextMode = completedMode === "work" ? "break" : "work";
       const nextDuration = modeDurationMinutes(state, nextMode);
+      let reply;
 
-      const reply = await generateDomodoroReply(
-        completedMode === "work"
-          ? `Persona: ${customPersona}. Outfit: ${outfit}. The user finished a ${state.workMinutes} minute focus session. Tell them to take a ${state.breakMinutes} minute break now.`
-          : `Persona: ${customPersona}. Outfit: ${outfit}. The user's ${state.breakMinutes} minute break is over. Tell them to get back to work now.`,
-      );
+      try {
+        reply = await generateDomodoroReply(
+          completedMode === "work"
+            ? `Persona: ${customPersona}. Outfit: ${outfit}. The user finished a ${state.workMinutes} minute focus session. Tell them to take a ${state.breakMinutes} minute break now.`
+            : `Persona: ${customPersona}. Outfit: ${outfit}. The user's ${state.breakMinutes} minute break is over. Tell them to get back to work now.`,
+        );
+      } catch {
+        reply = {
+          text: completedMode === "work"
+            ? `Focus complete, trouble. Take your ${state.breakMinutes} minute break.`
+            : "Break is over. Back to work.",
+          pose: completedMode === "work" ? "approval" : "pointing",
+        };
+      }
 
       await notifyActiveTab(reply.text, reply.pose, prefs.outfit);
       if (completedMode === "work") {

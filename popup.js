@@ -240,7 +240,6 @@ chrome.storage.local.get([
   'isActive',
   'outfit',
   'persona',
-  'avatar',
   'completedSessions',
   'blacklistEnabled',
   'blacklistedSites',
@@ -249,7 +248,6 @@ chrome.storage.local.get([
   if (data.completedSessions !== undefined) timerState.completedSessions = data.completedSessions;
   if (data.outfit) outfitSelect.value = data.outfit;
   if (data.persona) document.getElementById('persona-input').value = data.persona;
-  if (data.avatar) avatarImg.src = data.avatar;
   blacklistToggle.checked = data.blacklistEnabled !== false;
   blacklistInput.value = Array.isArray(data.blacklistedSites) && data.blacklistedSites.length
     ? data.blacklistedSites.join('\n')
@@ -288,19 +286,6 @@ blacklistInput.addEventListener('input', (event) => {
     .map((site) => site.trim())
     .filter(Boolean);
   chrome.storage.local.set({ blacklistedSites });
-});
-
-document.getElementById('avatar-upload').addEventListener('change', (event) => {
-  const file = event.target.files[0];
-  if (file) {
-    const reader = new FileReader();
-    reader.onload = function(readerEvent) {
-      const dataUrl = readerEvent.target.result;
-      avatarImg.src = dataUrl;
-      chrome.storage.local.set({ avatar: dataUrl });
-    };
-    reader.readAsDataURL(file);
-  }
 });
 
 async function sendChat() {

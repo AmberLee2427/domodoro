@@ -131,6 +131,10 @@
       border-color: var(--lavender-deep);
     }
 
+    .center-column {
+      min-width: 0;
+    }
+
     .panel::before {
       content: attr(data-title);
       position: absolute;
@@ -347,6 +351,20 @@
       border-color: #d6c7a6;
     }
 
+    .outfit-panel {
+      padding-bottom: 10px;
+    }
+
+    .outfit-chart {
+      display: block;
+      width: 100%;
+      max-height: 360px;
+      object-fit: contain;
+      object-position: center;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.58);
+    }
+
     #todo-note {
       min-height: 260px;
       background:
@@ -413,30 +431,36 @@
         </section>
       </aside>
 
-      <section class="panel timer-panel" data-title="Focus Console">
-        <div id="mode-label">Focus Session</div>
-        <div id="timer-display">25:00</div>
-        <div class="duration-grid">
-          <div>
-            <label for="work-minutes">Focus</label>
-            <input id="work-minutes" type="number" min="1" max="180" step="1" value="25">
+      <div class="center-column">
+        <section class="panel timer-panel" data-title="Focus Console">
+          <div id="mode-label">Focus Session</div>
+          <div id="timer-display">25:00</div>
+          <div class="duration-grid">
+            <div>
+              <label for="work-minutes">Focus</label>
+              <input id="work-minutes" type="number" min="1" max="180" step="1" value="25">
+            </div>
+            <div>
+              <label for="break-minutes">Break</label>
+              <input id="break-minutes" type="number" min="1" max="180" step="1" value="5">
+            </div>
           </div>
-          <div>
-            <label for="break-minutes">Break</label>
-            <input id="break-minutes" type="number" min="1" max="180" step="1" value="5">
+          <div class="actions">
+            <button id="start-btn" class="primary">Start</button>
+            <button id="pause-btn">Pause</button>
+            <button id="reset-btn">Reset</button>
           </div>
-        </div>
-        <div class="actions">
-          <button id="start-btn" class="primary">Start</button>
-          <button id="pause-btn">Pause</button>
-          <button id="reset-btn">Reset</button>
-        </div>
-        <div class="progress-track"><div id="character-progress-bar"></div></div>
-        <div class="progress-copy">
-          <span id="session-count">0 sessions</span>
-          <span id="next-unlock">Next unlock: 25</span>
-        </div>
-      </section>
+          <div class="progress-track"><div id="character-progress-bar"></div></div>
+          <div class="progress-copy">
+            <span id="session-count">0 sessions</span>
+            <span id="next-unlock">Next unlock: 25</span>
+          </div>
+        </section>
+
+        <section class="panel outfit-panel" data-title="Outfit Rewards">
+          <img class="outfit-chart" src="../assets/outfits.png" alt="Domodoro outfit unlock rewards">
+        </section>
+      </div>
 
       <aside>
         <section class="panel chat-panel" data-title="Dom Channel">
@@ -465,6 +489,6 @@
       if (status) status.textContent = `Startup error: ${reason}`;
     });
   </script>
-  <script type="module" src="app.js?v=16"></script>
+  <script type="module" src="app.js?v=18"></script>
 </body>
 </html>

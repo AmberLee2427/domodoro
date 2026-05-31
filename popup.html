@@ -111,7 +111,7 @@
       border-color: var(--lavender-deep);
       background: linear-gradient(180deg, #fffafd, #f3eaf4);
       min-height: 190px;
-      padding-right: 142px;
+      padding-right: 156px;
     }
 
     .timer-panel::before,
@@ -151,10 +151,10 @@
 
     .character-standee {
       position: absolute;
-      right: 8px;
-      bottom: -8px;
-      width: 118px;
-      height: 180px;
+      right: 6px;
+      bottom: -10px;
+      width: 138px;
+      height: 196px;
       object-fit: contain;
       object-position: bottom center;
       filter: drop-shadow(0 10px 10px rgba(52, 38, 65, 0.22));
@@ -282,6 +282,20 @@
       resize: vertical;
     }
 
+    .outfit-panel {
+      padding-bottom: 9px;
+    }
+
+    .outfit-chart {
+      display: block;
+      width: 100%;
+      height: auto;
+      object-fit: contain;
+      object-position: center;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.58);
+    }
+
     .chat-line {
       margin-bottom: 6px;
     }
@@ -354,7 +368,6 @@
           <option value="chrome">Chrome Protocol</option>
           <option value="king">Productivity King</option>
         </select>
-        <input type="file" id="avatar-upload" accept="image/*">
       </div>
     </div>
   </section>
@@ -378,6 +391,10 @@
       <button id="warm-btn">Summon Dom</button>
       <button id="send-btn" class="primary">Send</button>
     </div>
+  </section>
+
+  <section class="panel outfit-panel" data-title="Outfit Rewards">
+    <img class="outfit-chart" src="assets/outfits.png" alt="Domodoro outfit unlock rewards">
   </section>
 
   <script src="popup.js"></script>

@@ -14,6 +14,7 @@ const BLACKLIST_LINES = [
   "Cute detour. Return to the task.",
 ];
 const BLACKLIST_POSES = ["stern", "pointing", "thinking"];
+const BLACKLIST_COOLDOWN_MS = 2 * 60 * 1000;
 
 let lastCheckedHref = "";
 
@@ -41,6 +42,8 @@ function blacklistPose() {
 }
 
 function showDomodoroPopup(request) {
+    document.querySelectorAll("[data-domodoro-popup='true']").forEach((element) => element.remove());
+
     const clippy = document.createElement("div");
     clippy.dataset.domodoroPopup = "true";
     clippy.style.cssText = `
@@ -190,8 +193,9 @@ async function maybeInterruptBlacklistedSite(force = false) {
   if (!entries.some((entry) => siteMatches(location.hostname, entry))) return;
 
   const key = `domodoro-blacklist-${location.hostname}`;
-  if (sessionStorage.getItem(key)) return;
-  sessionStorage.setItem(key, "seen");
+  const lastSeen = Number(sessionStorage.getItem(key) || 0);
+  if (lastSeen && Date.now() - lastSeen < BLACKLIST_COOLDOWN_MS) return;
+  sessionStorage.setItem(key, String(Date.now()));
 
   showDomodoroPopup({
     message: blacklistMessage(),
@@ -201,6 +205,10 @@ async function maybeInterruptBlacklistedSite(force = false) {
 }
 
 chrome.runtime.onMessage.addListener((request) => {
+  if (request.action === "domodoro_ping") {
+    return;
+  }
+
   if (request.action === "display_clippy") {
     showDomodoroPopup(request);
   }

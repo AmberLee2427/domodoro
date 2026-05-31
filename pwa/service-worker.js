@@ -1,9 +1,9 @@
-const CACHE_NAME = "domodoro-pwa-v16";
+const CACHE_NAME = "domodoro-pwa-v18";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./app.js",
-  "./app.js?v=16",
+  "./app.js?v=18",
   "./manifest.webmanifest",
   "../assets/characters/default/default.png",
   "../assets/characters/default/thinking.png",
@@ -42,6 +42,7 @@ const APP_SHELL = [
   "../assets/characters/king/headshot.png",
   "../assets/paperclip-logo-192.png",
   "../assets/paperclip-logo-512.png",
+  "../assets/outfits.png",
   "../transformers.js",
   "../vendor/onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs",
   "../vendor/onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm",

@@ -205,6 +205,11 @@ function render() {
   }
 }
 
+function renderTimerTick() {
+  timerDisplay.textContent = formatTime(remainingMs());
+  activeLabel.textContent = state.running ? "Running" : "Ready";
+}
+
 function appendChat(speaker, text) {
   const kind = speaker.toLowerCase() === "dom"
     ? "dom"
@@ -487,6 +492,10 @@ sendBtn.addEventListener("click", sendChat);
 chatInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") sendChat();
 });
+
+setInterval(() => {
+  if (state.running) renderTimerTick();
+}, 250);
 
 if ("Notification" in window && Notification.permission === "default") {
   document.addEventListener("click", () => Notification.requestPermission(), { once: true });
