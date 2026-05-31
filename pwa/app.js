@@ -4,15 +4,18 @@ const MODEL_ID = "onnx-community/gemma-4-E2B-it-ONNX";
 const MODEL_DTYPE = "q4f16";
 const MODEL_DEVICE = "webgpu";
 const STORAGE_KEY = "domodoro-pwa-state";
+const POSES = ["default", "thinking", "stern", "pointing", "approval", "beckon"];
 
 env.allowLocalModels = false;
 env.allowRemoteModels = true;
 env.useWasmCache = false;
-env.backends.onnx.wasm.wasmPaths = {
-  mjs: new URL("../vendor/onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs", import.meta.url).href,
-  wasm: new URL("../vendor/onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm", import.meta.url).href,
-};
-env.backends.onnx.wasm.proxy = false;
+if (env.backends?.onnx?.wasm) {
+  env.backends.onnx.wasm.wasmPaths = {
+    mjs: new URL("../vendor/onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs", import.meta.url).href,
+    wasm: new URL("../vendor/onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm", import.meta.url).href,
+  };
+  env.backends.onnx.wasm.proxy = false;
+}
 
 const activeLabel = document.getElementById("active-label");
 const startBtn = document.getElementById("start-btn");
@@ -23,6 +26,13 @@ const breakMinutesInput = document.getElementById("break-minutes");
 const modeLabel = document.getElementById("mode-label");
 const timerDisplay = document.getElementById("timer-display");
 const personaInput = document.getElementById("persona-input");
+const characterSelect = document.getElementById("character-select");
+const todoNote = document.getElementById("todo-note");
+const domPortrait = document.getElementById("dom-portrait");
+const avatarImg = document.getElementById("avatar-img");
+const characterProgressBar = document.getElementById("character-progress-bar");
+const sessionCount = document.getElementById("session-count");
+const nextUnlock = document.getElementById("next-unlock");
 const warmBtn = document.getElementById("warm-btn");
 const sendBtn = document.getElementById("send-btn");
 const chatInput = document.getElementById("chat-input");
@@ -34,6 +44,39 @@ let generatorPromise;
 let notificationTimer;
 let state = loadState();
 
+const CHARACTERS = {
+  default: {
+    label: "Default",
+    subtitle: "Sleek Office Demon",
+    folder: "default",
+    unlockAt: 0,
+  },
+  silk: {
+    label: "Silk & Surrender",
+    subtitle: "Soft Dom Edition",
+    folder: "silk",
+    unlockAt: 25,
+  },
+  director: {
+    label: "Obsidian Director",
+    subtitle: "Gothic Authority",
+    folder: "director",
+    unlockAt: 50,
+  },
+  chrome: {
+    label: "Chrome Protocol",
+    subtitle: "Cyber Efficiency",
+    folder: "chrome",
+    unlockAt: 75,
+  },
+  king: {
+    label: "Productivity King",
+    subtitle: "Too Powerful",
+    folder: "king",
+    unlockAt: 100,
+  },
+};
+
 function loadState() {
   const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
   return {
@@ -41,7 +84,11 @@ function loadState() {
     running: false,
     workMinutes: clampMinutes(saved.workMinutes, 25),
     breakMinutes: clampMinutes(saved.breakMinutes, 5),
-    persona: saved.persona || "An overbearing, possessive mafia boss who calls me trouble.",
+    persona: saved.persona || "An overbearing, possessive shadow daddy who calls me trouble.",
+    character: saved.character || "default",
+    pose: normalizePose(saved.pose),
+    todo: saved.todo || "",
+    completedSessions: Number.isFinite(saved.completedSessions) ? saved.completedSessions : 0,
     endAt: null,
   };
 }
@@ -52,6 +99,10 @@ function saveState() {
     workMinutes: state.workMinutes,
     breakMinutes: state.breakMinutes,
     persona: state.persona,
+    character: state.character,
+    pose: state.pose,
+    todo: state.todo,
+    completedSessions: state.completedSessions,
   }));
 }
 
@@ -71,6 +122,26 @@ function escapeHtml(value) {
   })[char]);
 }
 
+function normalizePose(value) {
+  return POSES.includes(value) ? value : "default";
+}
+
+function posePath(characterKey = state.character, pose = state.pose) {
+  const character = CHARACTERS[characterKey] || CHARACTERS.default;
+  return `../assets/characters/${character.folder}/${normalizePose(pose)}.png`;
+}
+
+function headshotPath(characterKey = state.character) {
+  const character = CHARACTERS[characterKey] || CHARACTERS.default;
+  return `../assets/characters/${character.folder}/headshot.png`;
+}
+
+function setPose(pose) {
+  state.pose = normalizePose(pose);
+  domPortrait.src = posePath(state.character, state.pose);
+  saveState();
+}
+
 function formatTime(ms) {
   const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
   const minutes = Math.floor(totalSeconds / 60);
@@ -88,6 +159,24 @@ function remainingMs() {
 
 function render() {
   const remaining = remainingMs();
+  const character = CHARACTERS[state.character] || CHARACTERS.default;
+  if (character.unlockAt > state.completedSessions) {
+    state.character = "default";
+    saveState();
+  }
+  const activeCharacter = CHARACTERS[state.character] || CHARACTERS.default;
+  const upcomingUnlock = Object.values(CHARACTERS)
+    .filter((item) => item.unlockAt > state.completedSessions)
+    .sort((a, b) => a.unlockAt - b.unlockAt)[0];
+  const previousUnlockAt = Object.values(CHARACTERS)
+    .filter((item) => item.unlockAt <= state.completedSessions)
+    .reduce((max, item) => Math.max(max, item.unlockAt), 0);
+  const targetUnlockAt = (upcomingUnlock?.unlockAt ?? state.completedSessions) || 1;
+  const progressRange = Math.max(1, targetUnlockAt - previousUnlockAt);
+  const progress = upcomingUnlock
+    ? ((state.completedSessions - previousUnlockAt) / progressRange) * 100
+    : 100;
+
   timerDisplay.textContent = formatTime(remaining);
   modeLabel.textContent = state.mode === "break" ? "Break Session" : "Focus Session";
   activeLabel.textContent = state.running ? "Running" : "Ready";
@@ -96,10 +185,33 @@ function render() {
   workMinutesInput.value = state.workMinutes;
   breakMinutesInput.value = state.breakMinutes;
   personaInput.value = state.persona;
+  characterSelect.value = state.character;
+  todoNote.value = state.todo;
+  domPortrait.src = posePath(state.character, state.pose);
+  avatarImg.src = headshotPath(state.character);
+  characterProgressBar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
+  sessionCount.textContent = `${state.completedSessions} sessions`;
+  nextUnlock.textContent = upcomingUnlock
+    ? `Next: ${upcomingUnlock.label} at ${upcomingUnlock.unlockAt}`
+    : "All outfits unlocked";
+
+  for (const option of characterSelect.options) {
+    const optionCharacter = CHARACTERS[option.value];
+    const locked = optionCharacter.unlockAt > state.completedSessions;
+    option.disabled = locked;
+    option.textContent = locked
+      ? `${optionCharacter.label} (${optionCharacter.unlockAt})`
+      : optionCharacter.label;
+  }
 }
 
 function appendChat(speaker, text) {
-  chatBox.innerHTML += `<div><b>${escapeHtml(speaker)}:</b> ${escapeHtml(text)}</div>`;
+  const kind = speaker.toLowerCase() === "dom"
+    ? "dom"
+    : speaker.toLowerCase() === "system"
+      ? "system"
+      : "user";
+  chatBox.innerHTML += `<div class="chat-line ${kind}"><b>${escapeHtml(speaker)}:</b> ${escapeHtml(text)}</div>`;
   chatBox.scrollTop = chatBox.scrollHeight;
 }
 
@@ -109,14 +221,35 @@ function setModelStatus(text, loading = false) {
   sendBtn.disabled = loading;
 }
 
+function describeError(error) {
+  return error?.message || String(error || "Unknown model error");
+}
+
+function webGpuProblem() {
+  if (!env.backends?.onnx?.wasm) {
+    return "Model backend did not initialize.";
+  }
+
+  if (!window.isSecureContext) {
+    return "Model needs HTTPS or localhost for WebGPU.";
+  }
+
+  if (!("gpu" in navigator)) {
+    return "WebGPU is not available in this browser.";
+  }
+
+  return "";
+}
+
 async function getGenerator() {
   if (generator) return generator;
-  if (!("gpu" in navigator)) {
-    throw new Error("WebGPU is not available in this browser.");
+  const problem = webGpuProblem();
+  if (problem) {
+    throw new Error(problem);
   }
 
   if (!generatorPromise) {
-    setModelStatus("Loading Gemma 4...", true);
+    setModelStatus("Summoning Dom...", true);
     generatorPromise = pipeline("text-generation", MODEL_ID, {
       dtype: MODEL_DTYPE,
       device: MODEL_DEVICE,
@@ -133,8 +266,9 @@ async function getGenerator() {
         return loadedGenerator;
       })
       .catch((error) => {
+        console.error("Domodoro model load failed", error);
         generatorPromise = undefined;
-        setModelStatus(error.message || String(error));
+        setModelStatus(describeError(error));
         throw error;
       });
   }
@@ -148,7 +282,10 @@ function buildMessages(userMessage) {
       role: "system",
       content:
         "You are Domodoro, a dramatic productivity coach for a Pomodoro timer. " +
-        "Keep responses short, theatrical, possessive, and commanding, but stay PG-13.",
+        "Keep responses short, theatrical, possessive, and commanding, but stay PG-13. " +
+        `You must choose one pose from: ${POSES.join(", ")}. ` +
+        "Respond with compact JSON only, exactly like {\"pose\":\"stern\",\"text\":\"Back to work, trouble.\"}. " +
+        "No markdown and no extra keys.",
     },
     { role: "user", content: userMessage },
   ];
@@ -166,24 +303,66 @@ function cleanGeneratedText(output) {
     .trim();
 }
 
+function parseDomResponse(rawText) {
+  const raw = cleanGeneratedText(rawText)
+    .replace(/^```(?:json)?/i, "")
+    .replace(/```$/i, "")
+    .trim();
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]);
+      const text = parsed.text || parsed.response || parsed.message || "";
+      return {
+        text: String(text).trim() || "Break time, trouble. Up.",
+        pose: normalizePose(parsed.pose),
+      };
+    } catch {
+      // Fall through to the forgiving parser below.
+    }
+  }
+
+  const poseMatch = raw.match(/^\s*pose\s*[:=-]\s*([a-z-]+)/im);
+  const text = raw
+    .replace(/^\s*pose\s*[:=-]\s*[a-z-]+\s*$/im, "")
+    .replace(/^\s*text\s*[:=-]\s*/im, "")
+    .trim();
+
+  return {
+    text: text || "Break time, trouble. Up.",
+    pose: normalizePose(poseMatch?.[1]),
+  };
+}
+
 async function generateLine(prompt) {
   const model = await getGenerator();
   const output = await model(buildMessages(prompt), {
-    max_new_tokens: 70,
+    max_new_tokens: 110,
     do_sample: true,
     temperature: 0.9,
     top_p: 0.95,
     top_k: 64,
   });
 
-  return cleanGeneratedText(output) || "Break time, trouble. Up.";
+  return parseDomResponse(output);
+}
+
+function contextBlock() {
+  const character = CHARACTERS[state.character] || CHARACTERS.default;
+  const todo = state.todo.trim() || "No written tasks. Improvise based on the timer.";
+  return [
+    `Persona: ${state.persona}.`,
+    `Current character: ${character.label} - ${character.subtitle}.`,
+    `User's todo/context note: ${todo}`,
+  ].join("\n");
 }
 
 function notify(text) {
   if ("Notification" in window && Notification.permission === "granted") {
     new Notification("Domodoro", {
       body: text,
-      icon: "../suit.png",
+      icon: "../assets/paperclip-logo-192.png",
     });
   }
 }
@@ -191,18 +370,26 @@ function notify(text) {
 async function handleSessionComplete() {
   const completedMode = state.mode;
   const prompt = completedMode === "work"
-    ? `Persona: ${state.persona}. The user finished a ${state.workMinutes} minute focus session. Tell them to take a ${state.breakMinutes} minute break now.`
-    : `Persona: ${state.persona}. The user's ${state.breakMinutes} minute break is over. Tell them to get back to work now.`;
+    ? `${contextBlock()}\nThe user finished a ${state.workMinutes} minute focus session. Tell them to take a ${state.breakMinutes} minute break now.`
+    : `${contextBlock()}\nThe user's ${state.breakMinutes} minute break is over. Tell them to get back to work now.`;
 
-  let line = completedMode === "work" ? "Break time, trouble." : "Back to work, trouble.";
+  let reply = {
+    text: completedMode === "work" ? "Break time, trouble." : "Back to work, trouble.",
+    pose: "default",
+  };
   try {
-    line = await generateLine(prompt);
+    reply = await generateLine(prompt);
   } catch (error) {
-    setModelStatus(error.message || String(error));
+    setModelStatus(describeError(error));
   }
 
-  appendChat("Dom", line);
-  notify(line);
+  setPose(reply.pose);
+  appendChat("Dom", reply.text);
+  notify(reply.text);
+  if (completedMode === "work") {
+    state.completedSessions += 1;
+    saveState();
+  }
   startTimer(completedMode === "work" ? "break" : "work");
 }
 
@@ -237,8 +424,13 @@ function saveSettings() {
   state.workMinutes = clampMinutes(workMinutesInput.value, state.workMinutes);
   state.breakMinutes = clampMinutes(breakMinutesInput.value, state.breakMinutes);
   state.persona = personaInput.value.trim() || state.persona;
-  if (state.running) startTimer(state.mode);
+  state.todo = todoNote.value;
+  state.character = characterSelect.value;
   saveState();
+  if (state.running) {
+    scheduleCompletion();
+  }
+  state.pose = normalizePose(state.pose);
   render();
 }
 
@@ -251,10 +443,11 @@ async function sendChat() {
   sendBtn.disabled = true;
 
   try {
-    const line = await generateLine(`Persona: ${state.persona}. Reply to this user message: ${text}`);
-    appendChat("Dom", line);
+    const reply = await generateLine(`${contextBlock()}\nReply to this user message: ${text}`);
+    setPose(reply.pose);
+    appendChat("Dom", reply.text);
   } catch (error) {
-    appendChat("System", error.message || String(error));
+    appendChat("System", describeError(error));
   } finally {
     sendBtn.disabled = false;
   }
@@ -270,7 +463,26 @@ resetBtn.addEventListener("click", resetTimer);
 workMinutesInput.addEventListener("change", saveSettings);
 breakMinutesInput.addEventListener("change", saveSettings);
 personaInput.addEventListener("input", saveSettings);
-warmBtn.addEventListener("click", () => getGenerator().catch((error) => appendChat("System", error.message || String(error))));
+characterSelect.addEventListener("change", saveSettings);
+todoNote.addEventListener("input", saveSettings);
+domPortrait.addEventListener("error", () => {
+  domPortrait.src = "../assets/characters/default/default.png";
+});
+avatarImg.addEventListener("error", () => {
+  avatarImg.src = "../assets/characters/default/headshot.png";
+});
+warmBtn.addEventListener("click", async () => {
+  setModelStatus("Summoning Dom...", true);
+
+  try {
+    await getGenerator();
+  } catch (error) {
+    console.error("Domodoro summon failed", error);
+    const message = describeError(error);
+    setModelStatus(message);
+    appendChat("System", message);
+  }
+});
 sendBtn.addEventListener("click", sendChat);
 chatInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") sendChat();
@@ -281,3 +493,8 @@ if ("Notification" in window && Notification.permission === "default") {
 }
 
 render();
+
+const startupProblem = webGpuProblem();
+if (startupProblem) {
+  setModelStatus(startupProblem);
+}

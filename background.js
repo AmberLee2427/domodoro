@@ -2,6 +2,42 @@ const SESSION_ALARM = "domodoro-session";
 const OFFSCREEN_URL = "offscreen.html";
 const DEFAULT_WORK_MINUTES = 25;
 const DEFAULT_BREAK_MINUTES = 5;
+const DEFAULT_BLACKLIST = [
+  "youtube.com",
+  "reddit.com",
+  "x.com",
+  "twitter.com",
+  "tiktok.com",
+  "instagram.com",
+];
+const POSES = ["default", "thinking", "stern", "pointing", "approval", "beckon"];
+const CHARACTERS = {
+  default: {
+    label: "Default",
+    subtitle: "Sleek Office Demon",
+    folder: "default",
+  },
+  silk: {
+    label: "Silk & Surrender",
+    subtitle: "Soft Dom Edition",
+    folder: "silk",
+  },
+  director: {
+    label: "Obsidian Director",
+    subtitle: "Gothic Authority",
+    folder: "director",
+  },
+  chrome: {
+    label: "Chrome Protocol",
+    subtitle: "Cyber Efficiency",
+    folder: "chrome",
+  },
+  king: {
+    label: "Productivity King",
+    subtitle: "Too Powerful",
+    folder: "king",
+  },
+};
 
 let creatingOffscreenDocument;
 
@@ -60,6 +96,59 @@ async function generateDomodoroLine(userMessage, maxNewTokens = 70) {
   return response?.text || "Break time, trouble. Up.";
 }
 
+function normalizePose(value) {
+  return POSES.includes(value) ? value : "default";
+}
+
+function characterSummary(key) {
+  const character = CHARACTERS[key] || CHARACTERS.default;
+  return `${character.label} - ${character.subtitle}`;
+}
+
+function characterFolder(key) {
+  return (CHARACTERS[key] || CHARACTERS.default).folder;
+}
+
+function parseDomodoroReply(rawText) {
+  const raw = String(rawText || "")
+    .replace(/^```(?:json)?/i, "")
+    .replace(/```$/i, "")
+    .trim();
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]);
+      const text = parsed.text || parsed.response || parsed.message || "";
+      return {
+        text: String(text).trim() || "Break time, trouble. Up.",
+        pose: normalizePose(parsed.pose),
+      };
+    } catch {
+      // Fall through to the forgiving parser below.
+    }
+  }
+
+  const poseMatch = raw.match(/^\s*pose\s*[:=-]\s*([a-z-]+)/im);
+  const text = raw
+    .replace(/^\s*pose\s*[:=-]\s*[a-z-]+\s*$/im, "")
+    .replace(/^\s*text\s*[:=-]\s*/im, "")
+    .trim();
+
+  return {
+    text: text || "Break time, trouble. Up.",
+    pose: normalizePose(poseMatch?.[1]),
+  };
+}
+
+async function generateDomodoroReply(userMessage, maxNewTokens = 120) {
+  const rawText = await generateDomodoroLine(
+    `${userMessage}\nChoose one pose from ${POSES.join(", ")} and return JSON only: {"pose":"default","text":"..."}.`,
+    maxNewTokens,
+  );
+  return parseDomodoroReply(rawText);
+}
+
 function normalizeMinutes(value, fallback) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
@@ -73,6 +162,7 @@ async function getTimerState() {
     "timerRunning",
     "workMinutes",
     "breakMinutes",
+    "completedSessions",
     "sessionEndAt",
   ]);
 
@@ -82,6 +172,7 @@ async function getTimerState() {
     running: data.timerRunning === true,
     workMinutes: normalizeMinutes(data.workMinutes, DEFAULT_WORK_MINUTES),
     breakMinutes: normalizeMinutes(data.breakMinutes, DEFAULT_BREAK_MINUTES),
+    completedSessions: Number.isFinite(data.completedSessions) ? data.completedSessions : 0,
     endAt: data.sessionEndAt || null,
   };
 }
@@ -130,22 +221,42 @@ async function resetTimer(mode = "work") {
   return broadcastTimerState();
 }
 
-async function notifyActiveTab(message) {
+async function notifyActiveTab(message, pose = "default", character = "default") {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tab?.id) {
-    const maybePromise = chrome.tabs.sendMessage(tab.id, { action: "display_clippy", message });
+    const maybePromise = chrome.tabs.sendMessage(tab.id, {
+      action: "display_clippy",
+      message,
+      pose: normalizePose(pose),
+      character: characterFolder(character),
+    });
     maybePromise?.catch?.(() => {});
   }
 }
 
 // Set up defaults on install without clobbering existing settings.
 chrome.runtime.onInstalled.addListener(async () => {
-  const data = await chrome.storage.local.get(["isActive", "workMinutes", "breakMinutes", "timerMode"]);
+  const data = await chrome.storage.local.get([
+    "isActive",
+    "workMinutes",
+    "breakMinutes",
+    "timerMode",
+    "completedSessions",
+    "outfit",
+    "blacklistEnabled",
+    "blacklistedSites",
+  ]);
   await chrome.storage.local.set({
     isActive: data.isActive ?? true,
     workMinutes: data.workMinutes ?? DEFAULT_WORK_MINUTES,
     breakMinutes: data.breakMinutes ?? DEFAULT_BREAK_MINUTES,
     timerMode: data.timerMode ?? "work",
+    completedSessions: data.completedSessions ?? 0,
+    outfit: data.outfit ?? "default",
+    blacklistEnabled: data.blacklistEnabled ?? true,
+    blacklistedSites: Array.isArray(data.blacklistedSites) && data.blacklistedSites.length
+      ? data.blacklistedSites
+      : DEFAULT_BLACKLIST,
     timerRunning: false,
     sessionEndAt: null,
   });
@@ -159,19 +270,24 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 
     try {
       const prefs = await chrome.storage.local.get(['persona', 'outfit']);
-      const customPersona = prefs.persona || "An overbearing mafia boss.";
-      const outfit = prefs.outfit || "suit";
+      const customPersona = prefs.persona || "An overbearing, possessive shadow daddy who calls me trouble.";
+      const outfit = characterSummary(prefs.outfit);
       const completedMode = state.mode;
       const nextMode = completedMode === "work" ? "break" : "work";
       const nextDuration = modeDurationMinutes(state, nextMode);
 
-      const cleanText = await generateDomodoroLine(
+      const reply = await generateDomodoroReply(
         completedMode === "work"
           ? `Persona: ${customPersona}. Outfit: ${outfit}. The user finished a ${state.workMinutes} minute focus session. Tell them to take a ${state.breakMinutes} minute break now.`
           : `Persona: ${customPersona}. Outfit: ${outfit}. The user's ${state.breakMinutes} minute break is over. Tell them to get back to work now.`,
       );
 
-      await notifyActiveTab(cleanText);
+      await notifyActiveTab(reply.text, reply.pose, prefs.outfit);
+      if (completedMode === "work") {
+        await chrome.storage.local.set({
+          completedSessions: state.completedSessions + 1,
+        });
+      }
       await scheduleSession(nextMode, nextDuration);
     } catch (error) {
       console.error("Domodoro panicked:", error);
@@ -187,14 +303,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
       try {
         const prefs = await chrome.storage.local.get(['persona', 'outfit']);
-        const customPersona = prefs.persona || "An overbearing mafia boss.";
-        const outfit = prefs.outfit || "suit";
+        const customPersona = prefs.persona || "An overbearing, possessive shadow daddy who calls me trouble.";
+        const outfit = characterSummary(prefs.outfit);
 
-        const cleanText = await generateDomodoroLine(
+        const reply = await generateDomodoroReply(
           `Persona: ${customPersona}. Outfit: ${outfit}. Reply to this user message: ${request.text}`,
         );
 
-        sendResponse({ text: cleanText });
+        sendResponse({ text: reply.text, pose: reply.pose });
       } catch (error) {
         sendResponse({ text: `*System malfunction:* ${error.message || String(error)}` });
       }

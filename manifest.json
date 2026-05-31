@@ -2,7 +2,12 @@
   "manifest_version": 3,
   "name": "Domodoro",
   "version": "1.0.0",
-  "description": "Your toxic, possessive Pomodoro mafia boss.",
+  "description": "Your toxic, possessive Pomodoro shadow daddy.",
+  "icons": {
+    "16": "assets/paperclip-logo-192.png",
+    "48": "assets/paperclip-logo-192.png",
+    "128": "assets/paperclip-logo-192.png"
+  },
   "permissions": [
     "storage",
     "activeTab",
@@ -32,5 +37,13 @@
   },
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "assets/characters/*/*.png"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

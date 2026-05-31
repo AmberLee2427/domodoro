@@ -12,6 +12,74 @@ const warmBtn = document.getElementById('warm-btn');
 const chatInput = document.getElementById('chat-input');
 const chatBox = document.getElementById('chat-box');
 const modelStatus = document.getElementById('model-status');
+const outfitSelect = document.getElementById('outfit-select');
+const avatarImg = document.getElementById('avatar-img');
+const characterStandee = document.getElementById('character-standee');
+const blacklistToggle = document.getElementById('blacklist-toggle');
+const blacklistInput = document.getElementById('blacklist-input');
+const POSES = ['default', 'thinking', 'stern', 'pointing', 'approval', 'beckon'];
+const DEFAULT_BLACKLIST = [
+  'youtube.com',
+  'reddit.com',
+  'x.com',
+  'twitter.com',
+  'tiktok.com',
+  'instagram.com',
+];
+
+const CHARACTERS = {
+  default: {
+    label: 'Default',
+    subtitle: 'Sleek Office Demon',
+    folder: 'default',
+    unlockAt: 0,
+  },
+  silk: {
+    label: 'Silk & Surrender',
+    subtitle: 'Soft Dom Edition',
+    folder: 'silk',
+    unlockAt: 25,
+  },
+  director: {
+    label: 'Obsidian Director',
+    subtitle: 'Gothic Authority',
+    folder: 'director',
+    unlockAt: 50,
+  },
+  chrome: {
+    label: 'Chrome Protocol',
+    subtitle: 'Cyber Efficiency',
+    folder: 'chrome',
+    unlockAt: 75,
+  },
+  king: {
+    label: 'Productivity King',
+    subtitle: 'Too Powerful',
+    folder: 'king',
+    unlockAt: 100,
+  },
+};
+
+let currentPose = 'default';
+
+function normalizePose(value) {
+  return POSES.includes(value) ? value : 'default';
+}
+
+function posePath(characterKey = outfitSelect.value, pose = currentPose) {
+  const character = CHARACTERS[characterKey] || CHARACTERS.default;
+  return `assets/characters/${character.folder}/${normalizePose(pose)}.png`;
+}
+
+function headshotPath(characterKey = outfitSelect.value) {
+  const character = CHARACTERS[characterKey] || CHARACTERS.default;
+  return `assets/characters/${character.folder}/headshot.png`;
+}
+
+function setPose(pose) {
+  currentPose = normalizePose(pose);
+  characterStandee.src = posePath(outfitSelect.value, currentPose);
+}
 
 let timerState = {
   isActive: true,
@@ -19,8 +87,39 @@ let timerState = {
   running: false,
   workMinutes: 25,
   breakMinutes: 5,
+  completedSessions: 0,
   endAt: null,
 };
+
+function renderCharacters() {
+  const completedSessions = timerState.completedSessions || 0;
+  const selected = CHARACTERS[outfitSelect.value] || CHARACTERS.default;
+
+  for (const option of outfitSelect.options) {
+    const character = CHARACTERS[option.value];
+    const locked = character.unlockAt > completedSessions;
+    option.disabled = locked;
+    option.textContent = locked
+      ? `${character.label} (${character.unlockAt})`
+      : character.label;
+  }
+
+  if (selected.unlockAt > completedSessions) {
+    outfitSelect.value = 'default';
+    chrome.storage.local.set({ outfit: 'default' });
+  }
+
+  avatarImg.src = headshotPath(outfitSelect.value);
+  characterStandee.src = posePath(outfitSelect.value, currentPose);
+}
+
+avatarImg.addEventListener('error', () => {
+  avatarImg.src = 'assets/characters/default/headshot.png';
+});
+
+characterStandee.addEventListener('error', () => {
+  characterStandee.src = 'assets/characters/default/default.png';
+});
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (char) => ({
@@ -66,6 +165,7 @@ function applyTimerState(state) {
   timerState = { ...timerState, ...state };
   workMinutesInput.value = timerState.workMinutes;
   breakMinutesInput.value = timerState.breakMinutes;
+  renderCharacters();
   renderTimer();
 }
 
@@ -107,7 +207,7 @@ chrome.runtime.onMessage.addListener((message) => {
 setInterval(renderTimer, 500);
 
 warmBtn.addEventListener('click', async () => {
-  renderStatus({ state: 'loading', detail: 'Warming up Gemma 4', progress: 0 });
+  renderStatus({ state: 'loading', detail: 'Summoning Dom', progress: 0 });
   const response = await chrome.runtime.sendMessage({ action: 'warm_model' });
   renderStatus(response?.status);
 });
@@ -136,11 +236,25 @@ workMinutesInput.addEventListener('change', saveTimerSettings);
 breakMinutesInput.addEventListener('change', saveTimerSettings);
 
 // Load saved user preferences
-chrome.storage.local.get(['isActive', 'outfit', 'persona', 'avatar'], (data) => {
+chrome.storage.local.get([
+  'isActive',
+  'outfit',
+  'persona',
+  'avatar',
+  'completedSessions',
+  'blacklistEnabled',
+  'blacklistedSites',
+], (data) => {
   if (data.isActive !== undefined) activeToggle.checked = data.isActive;
-  if (data.outfit) document.getElementById('outfit-select').value = data.outfit;
+  if (data.completedSessions !== undefined) timerState.completedSessions = data.completedSessions;
+  if (data.outfit) outfitSelect.value = data.outfit;
   if (data.persona) document.getElementById('persona-input').value = data.persona;
-  if (data.avatar) document.getElementById('avatar-img').src = data.avatar;
+  if (data.avatar) avatarImg.src = data.avatar;
+  blacklistToggle.checked = data.blacklistEnabled !== false;
+  blacklistInput.value = Array.isArray(data.blacklistedSites) && data.blacklistedSites.length
+    ? data.blacklistedSites.join('\n')
+    : DEFAULT_BLACKLIST.join('\n');
+  renderCharacters();
 });
 
 activeToggle.addEventListener('change', async (event) => {
@@ -155,12 +269,25 @@ activeToggle.addEventListener('change', async (event) => {
   }
 });
 
-document.getElementById('outfit-select').addEventListener('change', (event) => {
+outfitSelect.addEventListener('change', (event) => {
   chrome.storage.local.set({ outfit: event.target.value });
+  renderCharacters();
 });
 
 document.getElementById('persona-input').addEventListener('input', (event) => {
   chrome.storage.local.set({ persona: event.target.value });
+});
+
+blacklistToggle.addEventListener('change', (event) => {
+  chrome.storage.local.set({ blacklistEnabled: event.target.checked });
+});
+
+blacklistInput.addEventListener('input', (event) => {
+  const blacklistedSites = event.target.value
+    .split(/\n+/)
+    .map((site) => site.trim())
+    .filter(Boolean);
+  chrome.storage.local.set({ blacklistedSites });
 });
 
 document.getElementById('avatar-upload').addEventListener('change', (event) => {
@@ -169,7 +296,7 @@ document.getElementById('avatar-upload').addEventListener('change', (event) => {
     const reader = new FileReader();
     reader.onload = function(readerEvent) {
       const dataUrl = readerEvent.target.result;
-      document.getElementById('avatar-img').src = dataUrl;
+      avatarImg.src = dataUrl;
       chrome.storage.local.set({ avatar: dataUrl });
     };
     reader.readAsDataURL(file);
@@ -179,7 +306,7 @@ document.getElementById('avatar-upload').addEventListener('change', (event) => {
 async function sendChat() {
   if (!chatInput.value.trim()) return;
 
-  chatBox.innerHTML += `<div><b>You:</b> ${escapeHtml(chatInput.value)}</div>`;
+  chatBox.innerHTML += `<div class="chat-line user"><b>You:</b> ${escapeHtml(chatInput.value)}</div>`;
   const userMsg = chatInput.value;
   chatInput.value = '';
   sendBtn.disabled = true;
@@ -190,10 +317,11 @@ async function sendChat() {
       text: userMsg,
     });
 
-    chatBox.innerHTML += `<div style="color: #e15f72;"><b>Dom:</b> ${escapeHtml(response.text)}</div>`;
+    setPose(response.pose);
+    chatBox.innerHTML += `<div class="chat-line dom"><b>Dom:</b> ${escapeHtml(response.text)}</div>`;
     chatBox.scrollTop = chatBox.scrollHeight;
   } catch (error) {
-    chatBox.innerHTML += `<div style="color: #e15f72;"><b>System:</b> ${escapeHtml(error.message || String(error))}</div>`;
+    chatBox.innerHTML += `<div class="chat-line system"><b>System:</b> ${escapeHtml(error.message || String(error))}</div>`;
   } finally {
     sendBtn.disabled = false;
   }

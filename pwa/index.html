@@ -3,21 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#08070d">
+  <meta name="theme-color" content="#f7f1f5">
   <link rel="manifest" href="manifest.webmanifest">
   <title>Domodoro</title>
   <style>
     :root {
-      color-scheme: dark;
-      --bg: #08070d;
-      --panel: #15111f;
-      --panel-soft: #1d1728;
-      --line: #3a2d4e;
-      --gold: #e6c66f;
-      --rose: #e15f72;
-      --mint: #63d9b4;
-      --text: #f7f0ff;
-      --muted: #a99db9;
+      color-scheme: light;
+      --paper: #f7f1f5;
+      --paper-deep: #eee4ed;
+      --panel: #fffafc;
+      --lavender: #cdb8df;
+      --lavender-deep: #8c72ad;
+      --ink: #3f3846;
+      --muted: #7f7488;
+      --line: #bcaacb;
+      --heart: #b58bd4;
     }
 
     * { box-sizing: border-box; }
@@ -27,16 +27,25 @@
       margin: 0;
       padding: max(18px, env(safe-area-inset-top)) 16px max(18px, env(safe-area-inset-bottom));
       background:
-        radial-gradient(circle at 20% 0%, rgba(225, 95, 114, 0.18), transparent 34%),
-        radial-gradient(circle at 92% 10%, rgba(230, 198, 111, 0.16), transparent 30%),
-        var(--bg);
-      color: var(--text);
-      font: 15px/1.4 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        linear-gradient(rgba(140, 114, 173, 0.055) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(140, 114, 173, 0.045) 1px, transparent 1px),
+        radial-gradient(circle at 88% 5%, rgba(205, 184, 223, 0.62), transparent 30%),
+        var(--paper);
+      background-size: 20px 20px, 20px 20px, auto;
+      color: var(--ink);
+      font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
     }
 
     main {
-      width: min(100%, 460px);
+      width: min(100%, 1180px);
       margin: 0 auto;
+    }
+
+    .app-grid {
+      display: grid;
+      grid-template-columns: minmax(240px, 0.8fr) minmax(360px, 1.15fr) minmax(300px, 0.95fr);
+      gap: 16px;
+      align-items: start;
     }
 
     header {
@@ -44,13 +53,43 @@
       align-items: center;
       justify-content: space-between;
       margin-bottom: 16px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 10px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-mark {
+      position: relative;
+      width: 20px;
+      height: 42px;
+      border: 4px solid var(--lavender-deep);
+      border-radius: 999px;
+      transform: rotate(3deg);
+      opacity: 0.9;
+      flex: 0 0 auto;
+    }
+
+    .brand-mark::after {
+      content: "";
+      position: absolute;
+      left: 5px;
+      top: 7px;
+      width: 10px;
+      height: 28px;
+      border: 2px solid var(--lavender);
+      border-radius: 999px;
     }
 
     h1 {
       margin: 0;
-      color: var(--gold);
-      font-family: Georgia, serif;
-      font-size: 32px;
+      color: var(--ink);
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(42px, 13vw, 72px);
       font-weight: 500;
       letter-spacing: 0;
     }
@@ -59,7 +98,7 @@
       display: flex;
       align-items: center;
       gap: 7px;
-      color: var(--muted);
+      color: var(--lavender-deep);
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.08em;
@@ -69,23 +108,64 @@
       width: 9px;
       height: 9px;
       border-radius: 50%;
-      background: var(--mint);
-      box-shadow: 0 0 14px rgba(99, 217, 180, 0.8);
+      background: var(--heart);
+      box-shadow: 0 0 14px rgba(181, 139, 212, 0.68);
     }
 
     .panel {
+      position: relative;
       border: 1px solid var(--line);
-      border-radius: 8px;
-      background: rgba(21, 17, 31, 0.94);
+      border-radius: 2px;
+      background: rgba(255, 250, 252, 0.88);
       padding: 14px;
       margin-bottom: 14px;
-      box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+      box-shadow: 4px 5px 0 rgba(140, 114, 173, 0.15);
     }
 
     .timer-panel {
       text-align: center;
-      border-color: rgba(230, 198, 111, 0.45);
-      background: linear-gradient(180deg, rgba(33, 27, 44, 0.98), rgba(16, 12, 23, 0.98));
+      overflow: hidden;
+      min-height: 330px;
+      padding-top: 34px;
+      background: linear-gradient(180deg, #fffafd, #f3eaf4);
+      border-color: var(--lavender-deep);
+    }
+
+    .panel::before {
+      content: attr(data-title);
+      position: absolute;
+      inset: 0 0 auto;
+      height: 22px;
+      padding: 4px 9px;
+      border-bottom: 1px solid var(--line);
+      background: var(--lavender);
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 700;
+      text-align: left;
+    }
+
+    .panel > * {
+      position: relative;
+      z-index: 1;
+    }
+
+    .panel:not(.timer-panel) {
+      padding-top: 35px;
+    }
+
+    .dom-portrait {
+      position: fixed;
+      right: max(12px, env(safe-area-inset-right));
+      bottom: max(0px, env(safe-area-inset-bottom));
+      width: min(29vw, 300px);
+      height: min(52vh, 405px);
+      object-fit: contain;
+      object-position: bottom right;
+      opacity: 0.96;
+      filter: drop-shadow(0 14px 12px rgba(52, 38, 65, 0.18));
+      z-index: 5;
+      pointer-events: none;
     }
 
     #mode-label {
@@ -96,14 +176,17 @@
     }
 
     #timer-display {
-      margin: 8px 0 14px;
-      font-size: clamp(56px, 19vw, 86px);
+      margin: 8px 0 18px;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(72px, 10vw, 118px);
       line-height: 1;
       font-variant-numeric: tabular-nums;
       font-weight: 750;
+      text-shadow: 0 1px 0 #fff;
     }
 
     .duration-grid,
+    .character-select,
     .actions {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -119,6 +202,31 @@
       grid-template-columns: 1fr 1fr;
     }
 
+    .progress-track {
+      height: 12px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.7);
+      margin-top: 12px;
+      padding: 2px;
+    }
+
+    #character-progress-bar {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, var(--lavender), var(--heart));
+    }
+
+    .progress-copy {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
     label {
       display: block;
       margin-bottom: 6px;
@@ -129,41 +237,44 @@
     }
 
     textarea,
+    select,
     input {
       width: 100%;
       min-height: 42px;
       margin: 0 0 10px;
       padding: 10px 11px;
       border: 1px solid var(--line);
-      border-radius: 6px;
-      background: var(--panel-soft);
-      color: var(--text);
+      border-radius: 2px;
+      background: rgba(255, 255, 255, 0.72);
+      color: var(--ink);
       outline: none;
       font: inherit;
     }
 
     textarea:focus,
+    select:focus,
     input:focus {
-      border-color: rgba(230, 198, 111, 0.78);
-      box-shadow: 0 0 0 2px rgba(230, 198, 111, 0.12);
+      border-color: var(--lavender-deep);
+      box-shadow: 0 0 0 2px rgba(205, 184, 223, 0.35);
     }
 
     button {
       width: 100%;
       min-height: 42px;
-      border: 1px solid rgba(230, 198, 111, 0.38);
-      border-radius: 6px;
-      background: rgba(230, 198, 111, 0.13);
-      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 2px;
+      background: linear-gradient(#fffafd, #e7d8ec);
+      color: var(--ink);
       cursor: pointer;
       font-weight: 750;
       font: inherit;
+      box-shadow: 1px 1px 0 #fff inset, 1px 1px 0 rgba(83, 62, 103, 0.2);
     }
 
     button.primary {
-      border-color: transparent;
-      background: var(--rose);
-      color: #fff;
+      border-color: var(--lavender-deep);
+      background: linear-gradient(#d9c2e8, #b99ed2);
+      color: var(--ink);
     }
 
     button:disabled {
@@ -173,87 +284,187 @@
 
     .avatar-row {
       display: grid;
-      grid-template-columns: 84px 1fr;
+      grid-template-columns: 86px 1fr;
       gap: 14px;
       align-items: center;
     }
 
     .avatar-preview {
-      width: 84px;
-      height: 84px;
-      border-radius: 50%;
-      border: 2px solid rgba(230, 198, 111, 0.72);
-      object-fit: cover;
-      background: #09070d;
+      width: 86px;
+      height: 118px;
+      border-radius: 0;
+      border: 1px solid var(--line);
+      object-fit: contain;
+      object-position: center;
+      background: rgba(255, 255, 255, 0.55);
     }
 
     #chat-box {
-      height: 150px;
+      height: min(48vh, 440px);
       overflow-y: auto;
       border: 1px solid var(--line);
-      border-radius: 6px;
-      background: #07050b;
+      border-radius: 2px;
+      background: rgba(255, 255, 255, 0.58);
       padding: 10px;
       margin-bottom: 10px;
       font-size: 14px;
     }
 
+    .chat-line {
+      margin-bottom: 7px;
+    }
+
+    .chat-line.dom {
+      color: var(--lavender-deep);
+    }
+
+    .chat-line.system {
+      color: var(--muted);
+    }
+
+    .chat-panel {
+      min-height: 560px;
+      overflow: hidden;
+    }
+
     #model-status {
       min-height: 20px;
       margin: 8px 0;
-      color: var(--gold);
+      color: var(--lavender-deep);
       font-size: 13px;
+    }
+
+    .postit {
+      background: #fff8df;
+      border-color: #d6c7a6;
+      transform: rotate(-1deg);
+      box-shadow: 4px 6px 0 rgba(140, 114, 173, 0.13);
+    }
+
+    .postit::before {
+      content: "Context Note";
+      background: #eadfc3;
+      border-color: #d6c7a6;
+    }
+
+    #todo-note {
+      min-height: 260px;
+      background:
+        linear-gradient(transparent 31px, rgba(214, 199, 166, 0.5) 32px),
+        rgba(255, 252, 237, 0.9);
+      background-size: 100% 32px;
+      line-height: 32px;
+      resize: vertical;
+    }
+
+    @media (max-width: 940px) {
+      main {
+        width: min(100%, 520px);
+      }
+
+      .app-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .chat-panel {
+        min-height: 520px;
+      }
+
+      .dom-portrait {
+        position: absolute;
+        right: -18px;
+        bottom: -12px;
+        width: min(48vw, 220px);
+        height: 280px;
+      }
     }
   </style>
 </head>
 <body>
   <main>
     <header>
-      <h1>Domodoro</h1>
+      <div class="brand"><span class="brand-mark"></span><h1>Domodoro</h1></div>
       <div class="status-pill"><span class="dot"></span><span id="active-label">Ready</span></div>
     </header>
 
-    <section class="panel timer-panel">
-      <div id="mode-label">Focus Session</div>
-      <div id="timer-display">25:00</div>
-      <div class="duration-grid">
-        <div>
-          <label for="work-minutes">Focus</label>
-          <input id="work-minutes" type="number" min="1" max="180" step="1" value="25">
-        </div>
-        <div>
-          <label for="break-minutes">Break</label>
-          <input id="break-minutes" type="number" min="1" max="180" step="1" value="5">
-        </div>
-      </div>
-      <div class="actions">
-        <button id="start-btn" class="primary">Start</button>
-        <button id="pause-btn">Pause</button>
-        <button id="reset-btn">Reset</button>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="avatar-row">
-        <img id="avatar-img" class="avatar-preview" src="../suit.png" alt="Domodoro avatar">
-        <div>
+    <div class="app-grid">
+      <aside>
+        <section class="panel" data-title="Assistant Settings">
+          <div class="avatar-row">
+            <img id="avatar-img" class="avatar-preview" src="../assets/characters/default/headshot.png" alt="Domodoro avatar">
+            <div>
+              <label for="character-select">Character</label>
+              <select id="character-select">
+                <option value="default">Default</option>
+                <option value="silk" disabled>Silk & Surrender (25)</option>
+                <option value="director" disabled>Obsidian Director (50)</option>
+                <option value="chrome" disabled>Chrome Protocol (75)</option>
+                <option value="king" disabled>Productivity King (100)</option>
+              </select>
+            </div>
+          </div>
           <label for="persona-input">Persona Instructions</label>
-          <textarea id="persona-input" rows="3">An overbearing, possessive mafia boss who calls me trouble.</textarea>
-        </div>
-      </div>
-    </section>
+          <textarea id="persona-input" rows="6">An overbearing, possessive shadow daddy who calls me trouble.</textarea>
+        </section>
 
-    <section class="panel">
-      <div id="chat-box"></div>
-      <input type="text" id="chat-input" placeholder="Talk back...">
-      <div id="model-status">Gemma is asleep.</div>
-      <div class="actions chat-actions">
-        <button id="warm-btn">Warm Gemma</button>
-        <button id="send-btn" class="primary">Send</button>
-      </div>
-    </section>
+        <section class="panel postit" data-title="Context Note">
+          <label for="todo-note">Today's Terms</label>
+          <textarea id="todo-note" placeholder="- Finish the thing&#10;- Drink water&#10;- No tab wandering"></textarea>
+        </section>
+      </aside>
+
+      <section class="panel timer-panel" data-title="Focus Console">
+        <div id="mode-label">Focus Session</div>
+        <div id="timer-display">25:00</div>
+        <div class="duration-grid">
+          <div>
+            <label for="work-minutes">Focus</label>
+            <input id="work-minutes" type="number" min="1" max="180" step="1" value="25">
+          </div>
+          <div>
+            <label for="break-minutes">Break</label>
+            <input id="break-minutes" type="number" min="1" max="180" step="1" value="5">
+          </div>
+        </div>
+        <div class="actions">
+          <button id="start-btn" class="primary">Start</button>
+          <button id="pause-btn">Pause</button>
+          <button id="reset-btn">Reset</button>
+        </div>
+        <div class="progress-track"><div id="character-progress-bar"></div></div>
+        <div class="progress-copy">
+          <span id="session-count">0 sessions</span>
+          <span id="next-unlock">Next unlock: 25</span>
+        </div>
+      </section>
+
+      <aside>
+        <section class="panel chat-panel" data-title="Dom Channel">
+          <div id="chat-box"></div>
+          <input type="text" id="chat-input" placeholder="Talk back...">
+          <div id="model-status">Model not loaded.</div>
+          <div class="actions chat-actions">
+            <button id="warm-btn">Summon Dom</button>
+            <button id="send-btn" class="primary">Send</button>
+          </div>
+          <img id="dom-portrait" class="dom-portrait" src="../assets/characters/default/default.png" alt="">
+        </section>
+      </aside>
+    </div>
   </main>
 
-  <script type="module" src="app.js"></script>
+  <script>
+    window.addEventListener("error", (event) => {
+      const status = document.getElementById("model-status");
+      if (status) status.textContent = `Startup error: ${event.message}`;
+    });
+
+    window.addEventListener("unhandledrejection", (event) => {
+      const status = document.getElementById("model-status");
+      const reason = event.reason?.message || event.reason || "Unknown promise rejection";
+      if (status) status.textContent = `Startup error: ${reason}`;
+    });
+  </script>
+  <script type="module" src="app.js?v=16"></script>
 </body>
 </html>

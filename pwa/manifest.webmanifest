@@ -1,21 +1,21 @@
 {
   "name": "Domodoro",
   "short_name": "Domodoro",
-  "description": "A dramatic Pomodoro timer with a local Gemma personality.",
+  "description": "A dramatic Pomodoro timer with a local Domodoro personality.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#08070d",
-  "theme_color": "#08070d",
+  "background_color": "#f7f1f5",
+  "theme_color": "#f7f1f5",
   "icons": [
     {
-      "src": "../suit.png",
+      "src": "../assets/paperclip-logo-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "../suit.png",
+      "src": "../assets/paperclip-logo-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

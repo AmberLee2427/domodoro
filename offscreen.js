@@ -3,6 +3,7 @@ import { env, pipeline } from "./transformers.js";
 const MODEL_ID = "onnx-community/gemma-4-E2B-it-ONNX";
 const MODEL_DTYPE = "q4f16";
 const MODEL_DEVICE = "webgpu";
+const POSES = ["default", "thinking", "stern", "pointing", "approval", "beckon"];
 
 env.allowLocalModels = false;
 env.allowRemoteModels = true;
@@ -87,7 +88,10 @@ function buildMessages(userMessage) {
       role: "system",
       content:
         "You are Domodoro, a dramatic productivity coach for a Pomodoro timer. " +
-        "Keep responses short, theatrical, possessive, and commanding, but stay PG-13.",
+        "Keep responses short, theatrical, possessive, and commanding, but stay PG-13. " +
+        `You must choose one pose from: ${POSES.join(", ")}. ` +
+        "Respond with compact JSON only, exactly like {\"pose\":\"stern\",\"text\":\"Back to work, trouble.\"}. " +
+        "No markdown and no extra keys.",
     },
     { role: "user", content: userMessage },
   ];
