@@ -56,7 +56,7 @@ env.fetch = (resource, options = {}) => {
     : options;
 
   const freshUrl = cacheBustedModelUrl(url);
-  setLoadingStatus("Fetching fresh model files...");
+  setLoadingStatus("Fetching model files...");
 
   return fetch(freshUrl, {
     ...requestInit,
@@ -102,7 +102,6 @@ let notificationTimer;
 let loadingProgress = 0;
 let loadingStatusText = "";
 let loadingStatusLastPaint = 0;
-let loadingFiles = new Map();
 let preferredBackend = localStorage.getItem(BACKEND_KEY) || "auto";
 let activeModelDevice = resolveModelDevice();
 let compileStartedAt = 0;
@@ -345,7 +344,7 @@ function setModelStatus(text, loading = false) {
 function setLoadingStatus(text, { force = false } = {}) {
   const now = Date.now();
   if (!force && text === loadingStatusText) return;
-  if (!force && now - loadingStatusLastPaint < 500) return;
+  if (!force && now - loadingStatusLastPaint < 1000) return;
 
   loadingStatusText = text;
   loadingStatusLastPaint = now;
@@ -386,22 +385,7 @@ function resetLoadingTelemetry() {
   loadingProgress = 0;
   loadingStatusText = "";
   loadingStatusLastPaint = 0;
-  loadingFiles = new Map();
   stopCompileStatus();
-}
-
-function bundleProgressFromFiles() {
-  let loaded = 0;
-  let total = 0;
-
-  for (const file of loadingFiles.values()) {
-    if (!Number.isFinite(file.total) || file.total <= 0) continue;
-    loaded += Math.min(file.loaded || 0, file.total);
-    total += file.total;
-  }
-
-  if (total <= 0) return loadingProgress;
-  return Math.floor((loaded / total) * 100);
 }
 
 function formatBytes(bytes) {
@@ -429,45 +413,32 @@ function quotaErrorMessage(available, needed, quota, usage, persisted) {
 function updateLoadingProgress(info, device) {
   if (info.status === "progress_total") {
     const percent = Number.isFinite(info.progress) ? Math.floor(info.progress) : loadingProgress;
-    loadingProgress = Math.max(loadingProgress, Math.min(99, percent));
-    setLoadingStatus(`Downloading model bundle ${loadingProgress}%`);
 
     if (percent >= 100) {
       loadingProgress = 100;
       setLoadingStatus("Download complete. Preparing model session...", { force: true });
       scheduleCompileStatus(device);
+    } else {
+      loadingProgress = Math.max(loadingProgress, Math.max(0, percent));
+      setLoadingStatus(`Downloading model bundle ${loadingProgress}%`);
     }
 
     return;
   }
 
   if (info.status === "ready") {
+    setLoadingStatus("Preparing model files...", { force: true });
+    return;
+  }
+
+  if (info.status === "progress") {
+    setLoadingStatus("Downloading model files...");
+    return;
+  }
+
+  if (info.status) {
     setLoadingStatus("Preparing model files...");
-    return;
   }
-
-  if (info.status !== "progress") {
-    if (info.status) {
-      setLoadingStatus(`${info.status}: ${info.file || info.name || MODEL_ID}`);
-    }
-    return;
-  }
-
-  if (info.file) {
-    loadingFiles.set(info.file, {
-      loaded: Number(info.loaded) || 0,
-      total: Number(info.total) || 0,
-    });
-  }
-
-  const aggregatePercent = bundleProgressFromFiles();
-  const steppedPercent = Math.min(99, Math.max(loadingProgress, Math.floor(aggregatePercent / 5) * 5));
-
-  if (steppedPercent > loadingProgress) {
-    loadingProgress = steppedPercent;
-  }
-
-  setLoadingStatus(`Downloading model bundle ${loadingProgress}%`);
 }
 
 function describeError(error) {
