@@ -203,7 +203,7 @@
     }
 
     .chat-actions {
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr;
     }
 
     .progress-track {
@@ -341,6 +341,7 @@
       margin: 8px 0;
       color: var(--lavender-deep);
       font-size: 13px;
+      overflow-wrap: anywhere;
     }
 
     .postit {
@@ -398,11 +399,13 @@
       }
 
       .dom-portrait {
-        position: absolute;
-        right: -18px;
-        bottom: -12px;
-        width: min(48vw, 220px);
-        height: 280px;
+        position: static;
+        display: block;
+        width: min(42vw, 170px);
+        height: 210px;
+        margin: 12px 0 0 auto;
+        opacity: 0.9;
+        z-index: 1;
       }
     }
   </style>
@@ -478,6 +481,7 @@
           <div id="model-status">Model not loaded.</div>
           <div class="actions chat-actions">
             <button id="warm-btn">Summon Dom</button>
+            <button id="purge-cache-btn">Purge Cache</button>
             <button id="send-btn" class="primary">Send</button>
           </div>
           <img id="dom-portrait" class="dom-portrait" src="../assets/characters/default/default.png" alt="">
@@ -498,6 +502,6 @@
       if (status) status.textContent = `Startup error: ${reason}`;
     });
   </script>
-  <script type="module" src="app.js?v=20"></script>
+  <script type="module" src="app.js?v=22"></script>
 </body>
 </html>

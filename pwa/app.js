@@ -41,6 +41,7 @@ const characterProgressBar = document.getElementById("character-progress-bar");
 const sessionCount = document.getElementById("session-count");
 const nextUnlock = document.getElementById("next-unlock");
 const warmBtn = document.getElementById("warm-btn");
+const purgeCacheBtn = document.getElementById("purge-cache-btn");
 const sendBtn = document.getElementById("send-btn");
 const chatInput = document.getElementById("chat-input");
 const chatBox = document.getElementById("chat-box");
@@ -51,6 +52,8 @@ let generatorPromise;
 let notificationTimer;
 let loadingProgress = 0;
 let activeModelDevice = MODEL_DEVICE;
+let compileStartedAt = 0;
+let compileStatusTimer;
 let state = loadState();
 
 const CHARACTERS = {
@@ -274,7 +277,26 @@ function appendChat(speaker, text) {
 function setModelStatus(text, loading = false) {
   modelStatus.textContent = text;
   warmBtn.disabled = loading || Boolean(generator);
+  purgeCacheBtn.disabled = loading;
   sendBtn.disabled = loading;
+}
+
+function stopCompileStatus() {
+  clearInterval(compileStatusTimer);
+  compileStatusTimer = undefined;
+  compileStartedAt = 0;
+}
+
+function startCompileStatus(device) {
+  stopCompileStatus();
+  compileStartedAt = Date.now();
+  compileStatusTimer = setInterval(() => {
+    const seconds = Math.floor((Date.now() - compileStartedAt) / 1000);
+    const warning = seconds >= 120
+      ? " If this does not finish, the phone likely has enough storage but not enough GPU/RAM headroom for this local Gemma 4 session."
+      : "";
+    setModelStatus(`Compiling ${device.toUpperCase()} session... ${seconds}s elapsed.${warning}`, true);
+  }, 1000);
 }
 
 function formatBytes(bytes) {
@@ -308,8 +330,11 @@ function updateLoadingProgress(info, device) {
   if (steppedPercent <= loadingProgress) return;
 
   loadingProgress = steppedPercent;
-  const loadingLabel = device === "webgpu" && loadingProgress >= 100
-    ? "Compiling WebGPU session..."
+  const isCompiling = loadingProgress >= 100;
+  if (isCompiling && !compileStatusTimer) startCompileStatus(device);
+
+  const loadingLabel = isCompiling
+    ? `Compiling ${device.toUpperCase()} session...`
     : `Downloading ${loadingProgress}%`;
   setModelStatus(loadingLabel, true);
 }
@@ -413,6 +438,38 @@ async function showStorageDiagnostics() {
   }
 }
 
+async function purgeModelCache() {
+  stopCompileStatus();
+  generator = undefined;
+  generatorPromise = undefined;
+  loadingProgress = 0;
+
+  let deletedEntries = 0;
+  let deletedCaches = 0;
+
+  if ("caches" in window) {
+    const cacheNames = await caches.keys();
+    for (const cacheName of cacheNames) {
+      if (/transformers|huggingface|hf-|onnx/i.test(cacheName)) {
+        if (await caches.delete(cacheName)) deletedCaches += 1;
+        continue;
+      }
+
+      const cache = await caches.open(cacheName);
+      const requests = await cache.keys();
+      for (const request of requests) {
+        if (/huggingface\.co|hf\.co|xethub|onnx-community|gemma/i.test(request.url)) {
+          if (await cache.delete(request)) deletedEntries += 1;
+        }
+      }
+    }
+  }
+
+  setModelStatus(
+    `Model cache purged. Removed ${deletedCaches} cache bucket(s) and ${deletedEntries} model request(s). Summon Dom to download fresh.`,
+  );
+}
+
 async function getGenerator() {
   if (generator) return generator;
   const problem = webGpuProblem();
@@ -422,6 +479,7 @@ async function getGenerator() {
 
   if (!generatorPromise) {
     loadingProgress = 0;
+    stopCompileStatus();
     const loadWithDevice = async (device, statusLabel) => {
       activeModelDevice = device;
       setModelStatus(statusLabel, true);
@@ -449,6 +507,7 @@ async function getGenerator() {
       })
       .then((loadedGenerator) => {
         generator = loadedGenerator;
+        stopCompileStatus();
         setModelStatus(`${MODEL_ID} is ready (${activeModelDevice})`);
         return loadedGenerator;
       })
@@ -456,6 +515,7 @@ async function getGenerator() {
         console.error("Domodoro model load failed", error);
         generatorPromise = undefined;
         loadingProgress = 0;
+        stopCompileStatus();
         setModelStatus(describeError(error));
         throw error;
       });
@@ -692,6 +752,14 @@ warmBtn.addEventListener("click", async () => {
     const message = describeError(error);
     setModelStatus(message);
     appendChat("System", message);
+  }
+});
+purgeCacheBtn.addEventListener("click", async () => {
+  setModelStatus("Purging model cache...", true);
+  try {
+    await purgeModelCache();
+  } catch (error) {
+    setModelStatus(`Cache purge failed: ${describeError(error)}`);
   }
 });
 sendBtn.addEventListener("click", sendChat);

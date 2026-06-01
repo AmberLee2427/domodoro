@@ -9,6 +9,7 @@ const modeLabel = document.getElementById('mode-label');
 const timerDisplay = document.getElementById('timer-display');
 const sendBtn = document.getElementById('send-btn');
 const warmBtn = document.getElementById('warm-btn');
+const purgeCacheBtn = document.getElementById('purge-cache-btn');
 const chatInput = document.getElementById('chat-input');
 const chatBox = document.getElementById('chat-box');
 const modelStatus = document.getElementById('model-status');
@@ -245,6 +246,7 @@ function renderStatus(status) {
     : '';
   modelStatus.textContent = `${status.detail || status.state}${suffix}`;
   sendBtn.disabled = status.state === 'loading';
+  purgeCacheBtn.disabled = status.state === 'loading';
   warmBtn.disabled = status.state === 'loading' || status.state === 'ready';
 }
 
@@ -271,6 +273,12 @@ setInterval(renderTimer, 500);
 warmBtn.addEventListener('click', async () => {
   renderStatus({ state: 'loading', detail: 'Summoning Dom', progress: 0 });
   const response = await chrome.runtime.sendMessage({ action: 'warm_model' });
+  renderStatus(response?.status);
+});
+
+purgeCacheBtn.addEventListener('click', async () => {
+  renderStatus({ state: 'loading', detail: 'Purging model cache', progress: 0 });
+  const response = await chrome.runtime.sendMessage({ action: 'purge_model_cache' });
   renderStatus(response?.status);
 });
 

@@ -526,6 +526,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.action === "purge_model_cache") {
+    sendOffscreenMessage({ action: "purge_model_cache" })
+      .then(sendResponse)
+      .catch((error) => sendResponse({
+        status: {
+          state: "error",
+          detail: error.message || String(error),
+          progress: 0,
+        },
+        error: error.message || String(error),
+      }));
+    return true;
+  }
+
   if (request.action === "get_timer_state") {
     getTimerState().then((state) => sendResponse({ state }));
     return true;

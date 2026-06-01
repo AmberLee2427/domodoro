@@ -27,6 +27,40 @@ function setModelStatus(update) {
   chrome.runtime.sendMessage({ action: "model_status", status: modelStatus }).catch(() => {});
 }
 
+async function purgeModelCache() {
+  domodoroPipeline = undefined;
+  domodoroPipelinePromise = undefined;
+
+  let deletedEntries = 0;
+  let deletedCaches = 0;
+
+  if ("caches" in self) {
+    const cacheNames = await caches.keys();
+    for (const cacheName of cacheNames) {
+      if (/transformers|huggingface|hf-|onnx/i.test(cacheName)) {
+        if (await caches.delete(cacheName)) deletedCaches += 1;
+        continue;
+      }
+
+      const cache = await caches.open(cacheName);
+      const requests = await cache.keys();
+      for (const request of requests) {
+        if (/huggingface\.co|hf\.co|xethub|onnx-community|gemma/i.test(request.url)) {
+          if (await cache.delete(request)) deletedEntries += 1;
+        }
+      }
+    }
+  }
+
+  setModelStatus({
+    state: "idle",
+    detail: `Model cache purged. Removed ${deletedCaches} cache bucket(s) and ${deletedEntries} model request(s).`,
+    progress: 0,
+  });
+
+  return modelStatus;
+}
+
 async function getPipeline() {
   if (domodoroPipeline) return domodoroPipeline;
 
@@ -137,6 +171,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .catch((error) => sendResponse({
         status: modelStatus,
         error: error.message || String(error),
+      }));
+    return true;
+  }
+
+  if (request.action === "purge_model_cache") {
+    purgeModelCache()
+      .then((status) => sendResponse({ status }))
+      .catch((error) => sendResponse({
+        status: {
+          state: "error",
+          detail: error.message || String(error),
+          progress: 0,
+        },
       }));
     return true;
   }
