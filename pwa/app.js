@@ -570,11 +570,10 @@ async function showStorageDiagnostics() {
 }
 
 async function purgeModelCache() {
-  stopCompileStatus();
   generator = undefined;
   generatorPromise = undefined;
   processor = undefined;
-  loadingProgress = 0;
+  resetLoadingTelemetry();
   localStorage.setItem(FRESH_FETCH_KEY, "true");
   localStorage.setItem(FRESH_FETCH_TOKEN_KEY, String(Date.now()));
 
@@ -661,8 +660,7 @@ async function getGenerator() {
       .catch((error) => {
         console.error("Domodoro model load failed", error);
         generatorPromise = undefined;
-        loadingProgress = 0;
-        stopCompileStatus();
+        resetLoadingTelemetry();
         setModelStatus(describeError(error));
         throw error;
       });
@@ -913,8 +911,7 @@ if (backendSelect) {
     generator = undefined;
     generatorPromise = undefined;
     processor = undefined;
-    loadingProgress = 0;
-    stopCompileStatus();
+    resetLoadingTelemetry();
     setModelStatus(`Backend set to ${resolveModelDevice().toUpperCase()}. Summon Dom to load with this backend.`);
   });
 }
