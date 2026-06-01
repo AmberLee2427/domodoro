@@ -5,10 +5,11 @@ const MODEL_DTYPE = "q4f16";
 const FALLBACK_DEVICE = "wasm";
 const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 const HAS_WEBGPU = "gpu" in navigator;
-const MODEL_DEVICE = HAS_WEBGPU && window.isSecureContext ? "webgpu" : FALLBACK_DEVICE;
+const DEFAULT_MODEL_DEVICE = HAS_WEBGPU && window.isSecureContext ? "webgpu" : FALLBACK_DEVICE;
 const MODEL_DOWNLOAD_BYTES = 3.3 * 1024 * 1024 * 1024;
 const MODEL_STORAGE_HEADROOM = 1.35;
 const STORAGE_KEY = "domodoro-pwa-state";
+const BACKEND_KEY = "domodoro-model-backend";
 const CHAT_LOG_KEY = "chatLog";
 const CHAT_LOG_LIMIT = 20;
 const POSES = ["default", "thinking", "stern", "pointing", "approval", "beckon"];
@@ -42,6 +43,7 @@ const sessionCount = document.getElementById("session-count");
 const nextUnlock = document.getElementById("next-unlock");
 const warmBtn = document.getElementById("warm-btn");
 const purgeCacheBtn = document.getElementById("purge-cache-btn");
+const backendSelect = document.getElementById("backend-select");
 const sendBtn = document.getElementById("send-btn");
 const chatInput = document.getElementById("chat-input");
 const chatBox = document.getElementById("chat-box");
@@ -51,7 +53,8 @@ let generator;
 let generatorPromise;
 let notificationTimer;
 let loadingProgress = 0;
-let activeModelDevice = MODEL_DEVICE;
+let preferredBackend = localStorage.getItem(BACKEND_KEY) || "auto";
+let activeModelDevice = resolveModelDevice();
 let compileStartedAt = 0;
 let compileStatusTimer;
 let state = loadState();
@@ -138,6 +141,12 @@ function escapeHtml(value) {
 
 function normalizePose(value) {
   return POSES.includes(value) ? value : "default";
+}
+
+function resolveModelDevice() {
+  if (preferredBackend === "wasm") return "wasm";
+  if (preferredBackend === "webgpu") return "webgpu";
+  return DEFAULT_MODEL_DEVICE;
 }
 
 function posePath(characterKey = state.character, pose = state.pose) {
@@ -236,6 +245,7 @@ function render() {
   activeLabel.textContent = state.running ? "Running" : "Ready";
   startBtn.textContent = state.running ? "Restart" : "Start";
   pauseBtn.disabled = !state.running;
+  backendSelect.value = preferredBackend;
   workMinutesInput.value = state.workMinutes;
   breakMinutesInput.value = state.breakMinutes;
   personaInput.value = state.persona;
@@ -343,7 +353,7 @@ function describeError(error) {
   return error?.message || String(error || "Unknown model error");
 }
 
-function webGpuProblem(device = MODEL_DEVICE) {
+function webGpuProblem(device = resolveModelDevice()) {
   if (!env.backends?.onnx?.wasm) {
     return "Model backend did not initialize.";
   }
@@ -446,18 +456,22 @@ async function purgeModelCache() {
 
   let deletedEntries = 0;
   let deletedCaches = 0;
+  let checkedEntries = 0;
+  const cacheDetails = [];
 
   if ("caches" in window) {
     const cacheNames = await caches.keys();
     for (const cacheName of cacheNames) {
       if (/transformers|huggingface|hf-|onnx/i.test(cacheName)) {
         if (await caches.delete(cacheName)) deletedCaches += 1;
+        cacheDetails.push(`${cacheName}: deleted bucket`);
         continue;
       }
 
       const cache = await caches.open(cacheName);
       const requests = await cache.keys();
       for (const request of requests) {
+        checkedEntries += 1;
         if (/huggingface\.co|hf\.co|xethub|onnx-community|gemma/i.test(request.url)) {
           if (await cache.delete(request)) deletedEntries += 1;
         }
@@ -466,13 +480,15 @@ async function purgeModelCache() {
   }
 
   setModelStatus(
-    `Model cache purged. Removed ${deletedCaches} cache bucket(s) and ${deletedEntries} model request(s). Summon Dom to download fresh.`,
+    `Model cache purged. Removed ${deletedCaches} cache bucket(s) and ${deletedEntries} model request(s). Checked ${checkedEntries} app cache request(s). ${cacheDetails.join(" ")} Summon Dom to try again.`,
   );
 }
 
 async function getGenerator() {
   if (generator) return generator;
-  const problem = webGpuProblem();
+  const device = resolveModelDevice();
+  activeModelDevice = device;
+  const problem = webGpuProblem(device);
   if (problem) {
     throw new Error(problem);
   }
@@ -491,14 +507,14 @@ async function getGenerator() {
       });
     };
 
-    generatorPromise = loadWithDevice(MODEL_DEVICE, "Summoning Dom...")
+    generatorPromise = loadWithDevice(device, `Summoning Dom (${device.toUpperCase()})...`)
       .catch(async (error) => {
         if (/Dom is too powerful|storage/i.test(String(error.message || error))) {
           throw error;
         }
 
         console.warn("WebGPU model load failed, trying WASM fallback", error);
-        if (MODEL_DEVICE !== "webgpu") {
+        if (device !== "webgpu") {
           throw error;
         }
 
@@ -736,6 +752,15 @@ breakMinutesInput.addEventListener("change", saveSettings);
 personaInput.addEventListener("input", saveSettings);
 characterSelect.addEventListener("change", saveSettings);
 todoNote.addEventListener("input", saveSettings);
+backendSelect.addEventListener("change", () => {
+  preferredBackend = backendSelect.value;
+  localStorage.setItem(BACKEND_KEY, preferredBackend);
+  generator = undefined;
+  generatorPromise = undefined;
+  loadingProgress = 0;
+  stopCompileStatus();
+  setModelStatus(`Backend set to ${resolveModelDevice().toUpperCase()}. Summon Dom to load with this backend.`);
+});
 domPortrait.addEventListener("error", () => {
   domPortrait.src = "../assets/characters/default/default.png";
 });
@@ -782,5 +807,9 @@ const startupProblem = webGpuProblem();
 if (startupProblem) {
   setModelStatus(startupProblem);
 } else if (IS_MOBILE) {
-  showStorageDiagnostics().catch(() => {});
+  showStorageDiagnostics().then(() => {
+    if (resolveModelDevice() === "webgpu") {
+      modelStatus.textContent += " If WebGPU crashes during compile, switch Model Backend to WASM before summoning.";
+    }
+  }).catch(() => {});
 }

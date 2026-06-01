@@ -479,6 +479,12 @@
           <div id="chat-box"></div>
           <input type="text" id="chat-input" placeholder="Talk back...">
           <div id="model-status">Model not loaded.</div>
+          <label for="backend-select">Model Backend</label>
+          <select id="backend-select">
+            <option value="auto">Auto</option>
+            <option value="webgpu">WebGPU</option>
+            <option value="wasm">WASM</option>
+          </select>
           <div class="actions chat-actions">
             <button id="warm-btn">Summon Dom</button>
             <button id="purge-cache-btn">Purge Cache</button>
@@ -502,6 +508,6 @@
       if (status) status.textContent = `Startup error: ${reason}`;
     });
   </script>
-  <script type="module" src="app.js?v=22"></script>
+  <script type="module" src="app.js?v=23"></script>
 </body>
 </html>
