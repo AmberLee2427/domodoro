@@ -419,26 +419,14 @@ function updateLoadingProgress(info, device) {
       if (steppedPercent > loadingStatus.aggregatePercent) {
         loadingStatus.aggregatePercent = steppedPercent;
         setLoadingStatus(`Downloading Gemma 4 model: ${loadingStatus.aggregatePercent}%`, { force: true });
-      } else {
-        setLoadingStatus("Downloading Gemma 4 model...");
       }
     }
 
     return;
   }
 
-  if (info.status === "ready") {
-    setLoadingStatus("Preparing Gemma 4 model files...");
-    return;
-  }
-
-  if (info.status === "progress") {
-    setLoadingStatus("Downloading Gemma 4 model files...");
-    return;
-  }
-
-  if (info.status) {
-    setLoadingStatus("Preparing Gemma 4 model files...");
+  if (info.status === "progress" && loadingStatus.aggregatePercent === 0) {
+    setLoadingStatus("Downloading Gemma 4 model...");
   }
 }
 
