@@ -11,6 +11,7 @@ const MODEL_STORAGE_HEADROOM = 1.35;
 const STORAGE_KEY = "domodoro-pwa-state";
 const BACKEND_KEY = "domodoro-model-backend";
 const FRESH_FETCH_KEY = "domodoro-force-fresh-model-fetch";
+const FRESH_FETCH_TOKEN_KEY = "domodoro-force-fresh-model-token";
 const CHAT_LOG_KEY = "chatLog";
 const CHAT_LOG_LIMIT = 20;
 const POSES = ["default", "thinking", "stern", "pointing", "approval", "beckon"];
@@ -18,14 +19,39 @@ const POSES = ["default", "thinking", "stern", "pointing", "approval", "beckon"]
 env.allowLocalModels = false;
 env.allowRemoteModels = true;
 env.useWasmCache = false;
+function cacheBustedModelUrl(url) {
+  const freshToken = localStorage.getItem(FRESH_FETCH_TOKEN_KEY) || String(Date.now());
+  const parsedUrl = new URL(url);
+  parsedUrl.searchParams.set("domodoro_fresh", freshToken);
+  return parsedUrl.href;
+}
+
 env.fetch = (resource, options = {}) => {
   const url = typeof resource === "string" ? resource : resource?.url || "";
   const shouldForceFresh = localStorage.getItem(FRESH_FETCH_KEY) === "true"
     && /huggingface\.co|hf\.co|xethub|onnx-community|gemma/i.test(url);
 
-  return fetch(resource, {
-    ...options,
-    cache: shouldForceFresh ? "reload" : options.cache,
+  if (!shouldForceFresh) {
+    return fetch(resource, options);
+  }
+
+  const requestInit = resource instanceof Request
+    ? {
+        method: resource.method,
+        headers: resource.headers,
+        mode: resource.mode,
+        credentials: resource.credentials,
+        redirect: resource.redirect,
+        referrer: resource.referrer,
+        integrity: resource.integrity,
+        signal: resource.signal,
+        ...options,
+      }
+    : options;
+
+  return fetch(cacheBustedModelUrl(url), {
+    ...requestInit,
+    cache: "reload",
   });
 };
 if (env.backends?.onnx?.wasm) {
@@ -465,6 +491,7 @@ async function purgeModelCache() {
   generatorPromise = undefined;
   loadingProgress = 0;
   localStorage.setItem(FRESH_FETCH_KEY, "true");
+  localStorage.setItem(FRESH_FETCH_TOKEN_KEY, String(Date.now()));
 
   let deletedEntries = 0;
   let deletedCaches = 0;
@@ -492,7 +519,7 @@ async function purgeModelCache() {
   }
 
   setModelStatus(
-    `Model cache purged. Removed ${deletedCaches} cache bucket(s) and ${deletedEntries} model request(s). Checked ${checkedEntries} app cache request(s). ${cacheDetails.join(" ")} The next summon will bypass the browser HTTP cache.`,
+    `Model cache purged. Removed ${deletedCaches} cache bucket(s) and ${deletedEntries} model request(s). Checked ${checkedEntries} app cache request(s). ${cacheDetails.join(" ")} The next summon will bypass the browser HTTP cache with cache-busted model URLs.`,
   );
 }
 
@@ -536,6 +563,7 @@ async function getGenerator() {
       .then((loadedGenerator) => {
         generator = loadedGenerator;
         localStorage.removeItem(FRESH_FETCH_KEY);
+        localStorage.removeItem(FRESH_FETCH_TOKEN_KEY);
         stopCompileStatus();
         setModelStatus(`${MODEL_ID} is ready (${activeModelDevice})`);
         return loadedGenerator;
