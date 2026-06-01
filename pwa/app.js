@@ -618,10 +618,7 @@ async function getGenerator() {
   }
 
   if (!generatorPromise) {
-    loadingProgress = 0;
-    loadingStatusText = "";
-    loadingStatusLastPaint = 0;
-    stopCompileStatus();
+    resetLoadingTelemetry();
     const loadWithDevice = async (device, statusLabel) => {
       activeModelDevice = device;
       setModelStatus(statusLabel, true);
