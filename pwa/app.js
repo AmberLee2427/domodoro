@@ -1,7 +1,12 @@
-import { env, pipeline } from "../transformers.js";
+import { AutoProcessor, env, Gemma4ForConditionalGeneration } from "../transformers.js";
 
 const MODEL_ID = "onnx-community/gemma-4-E2B-it-ONNX";
-const MODEL_DTYPE = "q4f16";
+const MODEL_DTYPE = {
+  audio_encoder: "fp16",
+  vision_encoder: "fp16",
+  embed_tokens: "q4f16",
+  decoder_model_merged: "q4f16",
+};
 const FALLBACK_DEVICE = "wasm";
 const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 const HAS_WEBGPU = "gpu" in navigator;
@@ -92,6 +97,7 @@ const modelStatus = document.getElementById("model-status");
 
 let generator;
 let generatorPromise;
+let processor;
 let notificationTimer;
 let loadingProgress = 0;
 let loadingStatusText = "";
@@ -526,6 +532,7 @@ async function purgeModelCache() {
   stopCompileStatus();
   generator = undefined;
   generatorPromise = undefined;
+  processor = undefined;
   loadingProgress = 0;
   localStorage.setItem(FRESH_FETCH_KEY, "true");
   localStorage.setItem(FRESH_FETCH_TOKEN_KEY, String(Date.now()));
@@ -578,11 +585,17 @@ async function getGenerator() {
       activeModelDevice = device;
       setModelStatus(statusLabel, true);
       await ensureStorageRoom();
-      return pipeline("text-generation", MODEL_ID, {
-        dtype: MODEL_DTYPE,
-        device,
-        progress_callback: (info) => updateLoadingProgress(info, device),
-      });
+      const progress_callback = (info) => updateLoadingProgress(info, device);
+      const [loadedProcessor, loadedModel] = await Promise.all([
+        AutoProcessor.from_pretrained(MODEL_ID, { progress_callback }),
+        Gemma4ForConditionalGeneration.from_pretrained(MODEL_ID, {
+          dtype: MODEL_DTYPE,
+          device,
+          progress_callback,
+        }),
+      ]);
+      processor = loadedProcessor;
+      return loadedModel;
     };
 
     generatorPromise = loadWithDevice(device, `Summoning Dom (${device.toUpperCase()})...`)
@@ -637,6 +650,14 @@ function buildMessages(userMessage) {
 }
 
 function cleanGeneratedText(output) {
+  if (typeof output === "string") {
+    return output
+      .replace(/<\|channel\>thought[\s\S]*?<channel\|>/g, "")
+      .replace(/<\|[^>]+?\|>/g, "")
+      .replace(/<turn\|>|<channel\|>|<tool_response\|>/g, "")
+      .trim();
+  }
+
   const generated = output?.[0]?.generated_text ?? output?.generated_text ?? "";
   const text = Array.isArray(generated)
     ? generated.at(-1)?.content || ""
@@ -645,6 +666,7 @@ function cleanGeneratedText(output) {
   return text
     .replace(/<\|channel\>thought[\s\S]*?<channel\|>/g, "")
     .replace(/<\|[^>]+?\|>/g, "")
+    .replace(/<turn\|>|<channel\|>|<tool_response\|>/g, "")
     .trim();
 }
 
@@ -682,15 +704,29 @@ function parseDomResponse(rawText) {
 
 async function generateLine(prompt) {
   const model = await getGenerator();
-  const output = await model(buildMessages(prompt), {
+  if (!processor) throw new Error("Model processor is not loaded.");
+
+  const messages = buildMessages(prompt);
+  const promptText = processor.apply_chat_template(messages, {
+    add_generation_prompt: true,
+    enable_thinking: false,
+  });
+  const inputs = await processor(promptText, null, null, { add_special_tokens: false });
+  const output = await model.generate({
+    ...inputs,
     max_new_tokens: 110,
     do_sample: true,
     temperature: 0.9,
     top_p: 0.95,
     top_k: 64,
   });
+  const promptLength = inputs.input_ids.dims.at(-1);
+  const decoded = processor.batch_decode(
+    output.slice(null, [promptLength, null]),
+    { skip_special_tokens: false },
+  )[0];
 
-  return parseDomResponse(output);
+  return parseDomResponse(decoded);
 }
 
 function contextBlock() {
@@ -838,6 +874,7 @@ if (backendSelect) {
     localStorage.setItem(BACKEND_KEY, preferredBackend);
     generator = undefined;
     generatorPromise = undefined;
+    processor = undefined;
     loadingProgress = 0;
     stopCompileStatus();
     setModelStatus(`Backend set to ${resolveModelDevice().toUpperCase()}. Summon Dom to load with this backend.`);
