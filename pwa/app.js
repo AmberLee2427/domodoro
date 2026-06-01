@@ -102,10 +102,12 @@ let notificationTimer;
 let loadingProgress = 0;
 let loadingStatusText = "";
 let loadingStatusLastPaint = 0;
+let loadingFiles = new Map();
 let preferredBackend = localStorage.getItem(BACKEND_KEY) || "auto";
 let activeModelDevice = resolveModelDevice();
 let compileStartedAt = 0;
 let compileStatusTimer;
+let compileTransitionTimer;
 let state = loadState();
 
 const CHARACTERS = {
