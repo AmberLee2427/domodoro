@@ -245,7 +245,7 @@ function render() {
   activeLabel.textContent = state.running ? "Running" : "Ready";
   startBtn.textContent = state.running ? "Restart" : "Start";
   pauseBtn.disabled = !state.running;
-  backendSelect.value = preferredBackend;
+  if (backendSelect) backendSelect.value = preferredBackend;
   workMinutesInput.value = state.workMinutes;
   breakMinutesInput.value = state.breakMinutes;
   personaInput.value = state.persona;
@@ -287,7 +287,7 @@ function appendChat(speaker, text) {
 function setModelStatus(text, loading = false) {
   modelStatus.textContent = text;
   warmBtn.disabled = loading || Boolean(generator);
-  purgeCacheBtn.disabled = loading;
+  if (purgeCacheBtn) purgeCacheBtn.disabled = loading;
   sendBtn.disabled = loading;
 }
 
@@ -752,15 +752,17 @@ breakMinutesInput.addEventListener("change", saveSettings);
 personaInput.addEventListener("input", saveSettings);
 characterSelect.addEventListener("change", saveSettings);
 todoNote.addEventListener("input", saveSettings);
-backendSelect.addEventListener("change", () => {
-  preferredBackend = backendSelect.value;
-  localStorage.setItem(BACKEND_KEY, preferredBackend);
-  generator = undefined;
-  generatorPromise = undefined;
-  loadingProgress = 0;
-  stopCompileStatus();
-  setModelStatus(`Backend set to ${resolveModelDevice().toUpperCase()}. Summon Dom to load with this backend.`);
-});
+if (backendSelect) {
+  backendSelect.addEventListener("change", () => {
+    preferredBackend = backendSelect.value;
+    localStorage.setItem(BACKEND_KEY, preferredBackend);
+    generator = undefined;
+    generatorPromise = undefined;
+    loadingProgress = 0;
+    stopCompileStatus();
+    setModelStatus(`Backend set to ${resolveModelDevice().toUpperCase()}. Summon Dom to load with this backend.`);
+  });
+}
 domPortrait.addEventListener("error", () => {
   domPortrait.src = "../assets/characters/default/default.png";
 });
@@ -779,14 +781,16 @@ warmBtn.addEventListener("click", async () => {
     appendChat("System", message);
   }
 });
-purgeCacheBtn.addEventListener("click", async () => {
-  setModelStatus("Purging model cache...", true);
-  try {
-    await purgeModelCache();
-  } catch (error) {
-    setModelStatus(`Cache purge failed: ${describeError(error)}`);
-  }
-});
+if (purgeCacheBtn) {
+  purgeCacheBtn.addEventListener("click", async () => {
+    setModelStatus("Purging model cache...", true);
+    try {
+      await purgeModelCache();
+    } catch (error) {
+      setModelStatus(`Cache purge failed: ${describeError(error)}`);
+    }
+  });
+}
 sendBtn.addEventListener("click", sendChat);
 chatInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") sendChat();

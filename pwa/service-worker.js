@@ -1,9 +1,9 @@
-const CACHE_NAME = "domodoro-pwa-v23";
+const CACHE_NAME = "domodoro-pwa-v24";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./app.js",
-  "./app.js?v=23",
+  "./app.js?v=24",
   "./manifest.webmanifest",
   "../assets/characters/default/default.png",
   "../assets/characters/default/thinking.png",
