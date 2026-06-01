@@ -56,7 +56,7 @@ env.fetch = (resource, options = {}) => {
     : options;
 
   const freshUrl = cacheBustedModelUrl(url);
-  setLoadingStatus(`Fetching fresh model file: ${freshUrl.split("/").pop()?.split("?")[0] || "model file"}`);
+  setLoadingStatus("Fetching fresh model files...");
 
   return fetch(freshUrl, {
     ...requestInit,
@@ -353,9 +353,20 @@ function setLoadingStatus(text, { force = false } = {}) {
 }
 
 function stopCompileStatus() {
+  clearTimeout(compileTransitionTimer);
+  compileTransitionTimer = undefined;
   clearInterval(compileStatusTimer);
   compileStatusTimer = undefined;
   compileStartedAt = 0;
+}
+
+function scheduleCompileStatus(device) {
+  if (compileStatusTimer || compileTransitionTimer) return;
+
+  compileTransitionTimer = setTimeout(() => {
+    compileTransitionTimer = undefined;
+    startCompileStatus(device);
+  }, 3000);
 }
 
 function startCompileStatus(device) {
@@ -369,6 +380,28 @@ function startCompileStatus(device) {
       : "";
     setLoadingStatus(`Compiling ${device.toUpperCase()} session... ${seconds}s elapsed.${warning}`, { force: true });
   }, 1000);
+}
+
+function resetLoadingTelemetry() {
+  loadingProgress = 0;
+  loadingStatusText = "";
+  loadingStatusLastPaint = 0;
+  loadingFiles = new Map();
+  stopCompileStatus();
+}
+
+function bundleProgressFromFiles() {
+  let loaded = 0;
+  let total = 0;
+
+  for (const file of loadingFiles.values()) {
+    if (!Number.isFinite(file.total) || file.total <= 0) continue;
+    loaded += Math.min(file.loaded || 0, file.total);
+    total += file.total;
+  }
+
+  if (total <= 0) return loadingProgress;
+  return Math.floor((loaded / total) * 100);
 }
 
 function formatBytes(bytes) {
@@ -395,14 +428,21 @@ function quotaErrorMessage(available, needed, quota, usage, persisted) {
 
 function updateLoadingProgress(info, device) {
   if (info.status === "progress_total") {
-    const percent = Number.isFinite(info.progress) ? Math.round(info.progress) : loadingProgress;
-    loadingProgress = Math.max(loadingProgress, percent);
-    setLoadingStatus(`Downloading model bundle ${loadingProgress}%`, { force: loadingProgress >= 100 });
+    const percent = Number.isFinite(info.progress) ? Math.floor(info.progress) : loadingProgress;
+    loadingProgress = Math.max(loadingProgress, Math.min(99, percent));
+    setLoadingStatus(`Downloading model bundle ${loadingProgress}%`);
+
+    if (percent >= 100) {
+      loadingProgress = 100;
+      setLoadingStatus("Download complete. Preparing model session...", { force: true });
+      scheduleCompileStatus(device);
+    }
+
     return;
   }
 
   if (info.status === "ready") {
-    setLoadingStatus(`Preparing model files...`, { force: true });
+    setLoadingStatus("Preparing model files...");
     return;
   }
 
@@ -413,22 +453,21 @@ function updateLoadingProgress(info, device) {
     return;
   }
 
-  const percent = info.total ? Math.round((info.loaded / info.total) * 100) : loadingProgress;
-  const steppedPercent = Math.min(100, Math.max(loadingProgress, Math.floor(percent / 5) * 5));
-
-  if (steppedPercent <= loadingProgress && info.file) {
-    setLoadingStatus(`Downloading model files ${loadingProgress}%`);
-    return;
+  if (info.file) {
+    loadingFiles.set(info.file, {
+      loaded: Number(info.loaded) || 0,
+      total: Number(info.total) || 0,
+    });
   }
 
-  loadingProgress = steppedPercent;
-  const isCompiling = loadingProgress >= 100;
-  if (isCompiling && !compileStatusTimer) startCompileStatus(device);
+  const aggregatePercent = bundleProgressFromFiles();
+  const steppedPercent = Math.min(99, Math.max(loadingProgress, Math.floor(aggregatePercent / 5) * 5));
 
-  const loadingLabel = isCompiling
-    ? `Compiling ${device.toUpperCase()} session...`
-    : `Downloading ${loadingProgress}%`;
-  setLoadingStatus(loadingLabel, { force: isCompiling });
+  if (steppedPercent > loadingProgress) {
+    loadingProgress = steppedPercent;
+  }
+
+  setLoadingStatus(`Downloading model bundle ${loadingProgress}%`);
 }
 
 function describeError(error) {
