@@ -99,14 +99,15 @@ let generator;
 let generatorPromise;
 let processor;
 let notificationTimer;
-let loadingProgress = 0;
-let loadingStatusText = "";
-let loadingStatusLastPaint = 0;
+let loadingStatus = {
+  text: "",
+  lastPaint: 0,
+  aggregatePercent: 0,
+  compileStartedAt: 0,
+  compileTimer: undefined,
+};
 let preferredBackend = localStorage.getItem(BACKEND_KEY) || "auto";
 let activeModelDevice = resolveModelDevice();
-let compileStartedAt = 0;
-let compileStatusTimer;
-let compileTransitionTimer;
 let state = loadState();
 
 const CHARACTERS = {
@@ -341,39 +342,30 @@ function setModelStatus(text, loading = false) {
   sendBtn.disabled = loading;
 }
 
-function setLoadingStatus(text, { force = false } = {}) {
+function setLoadingStatus(text, { force = false, minInterval = 1200 } = {}) {
   const now = Date.now();
-  if (!force && text === loadingStatusText) return;
-  if (!force && now - loadingStatusLastPaint < 1000) return;
+  if (!force && text === loadingStatus.text) return;
+  if (!force && now - loadingStatus.lastPaint < minInterval) return;
 
-  loadingStatusText = text;
-  loadingStatusLastPaint = now;
+  loadingStatus.text = text;
+  loadingStatus.lastPaint = now;
   setModelStatus(text, true);
 }
 
 function stopCompileStatus() {
-  clearTimeout(compileTransitionTimer);
-  compileTransitionTimer = undefined;
-  clearInterval(compileStatusTimer);
-  compileStatusTimer = undefined;
-  compileStartedAt = 0;
+  clearInterval(loadingStatus.compileTimer);
+  loadingStatus.compileTimer = undefined;
+  loadingStatus.compileStartedAt = 0;
 }
 
-function scheduleCompileStatus(device) {
-  if (compileStatusTimer || compileTransitionTimer) return;
+function startCompileStatus(device, reason = "Download complete.") {
+  if (loadingStatus.compileTimer) return;
 
-  compileTransitionTimer = setTimeout(() => {
-    compileTransitionTimer = undefined;
-    startCompileStatus(device);
-  }, 3000);
-}
-
-function startCompileStatus(device) {
   stopCompileStatus();
-  compileStartedAt = Date.now();
-  setLoadingStatus(`Compiling ${device.toUpperCase()} session...`, { force: true });
-  compileStatusTimer = setInterval(() => {
-    const seconds = Math.floor((Date.now() - compileStartedAt) / 1000);
+  loadingStatus.compileStartedAt = Date.now();
+  setLoadingStatus(`${reason} Compiling ${device.toUpperCase()} session...`, { force: true });
+  loadingStatus.compileTimer = setInterval(() => {
+    const seconds = Math.floor((Date.now() - loadingStatus.compileStartedAt) / 1000);
     const warning = seconds >= 120
       ? " If this does not finish, the phone likely has enough storage but not enough GPU/RAM headroom for this local Gemma 4 session."
       : "";
@@ -382,10 +374,14 @@ function startCompileStatus(device) {
 }
 
 function resetLoadingTelemetry() {
-  loadingProgress = 0;
-  loadingStatusText = "";
-  loadingStatusLastPaint = 0;
   stopCompileStatus();
+  loadingStatus = {
+    text: "",
+    lastPaint: 0,
+    aggregatePercent: 0,
+    compileStartedAt: 0,
+    compileTimer: undefined,
+  };
 }
 
 function formatBytes(bytes) {
@@ -412,32 +408,37 @@ function quotaErrorMessage(available, needed, quota, usage, persisted) {
 
 function updateLoadingProgress(info, device) {
   if (info.status === "progress_total") {
-    const percent = Number.isFinite(info.progress) ? Math.floor(info.progress) : loadingProgress;
+    const percent = Number.isFinite(info.progress) ? Math.floor(info.progress) : loadingStatus.aggregatePercent;
 
     if (percent >= 100) {
-      loadingProgress = 100;
-      setLoadingStatus("Download complete. Preparing model session...", { force: true });
-      scheduleCompileStatus(device);
+      loadingStatus.aggregatePercent = 100;
+      startCompileStatus(device);
     } else {
-      loadingProgress = Math.max(loadingProgress, Math.max(0, percent));
-      setLoadingStatus(`Downloading model bundle ${loadingProgress}%`);
+      const nextPercent = Math.max(loadingStatus.aggregatePercent, Math.max(0, percent));
+      const steppedPercent = Math.floor(nextPercent / 5) * 5;
+      if (steppedPercent > loadingStatus.aggregatePercent) {
+        loadingStatus.aggregatePercent = steppedPercent;
+        setLoadingStatus(`Downloading Gemma 4 model: ${loadingStatus.aggregatePercent}%`, { force: true });
+      } else {
+        setLoadingStatus("Downloading Gemma 4 model...");
+      }
     }
 
     return;
   }
 
   if (info.status === "ready") {
-    setLoadingStatus("Preparing model files...", { force: true });
+    setLoadingStatus("Preparing Gemma 4 model files...");
     return;
   }
 
   if (info.status === "progress") {
-    setLoadingStatus("Downloading model files...");
+    setLoadingStatus("Downloading Gemma 4 model files...");
     return;
   }
 
   if (info.status) {
-    setLoadingStatus("Preparing model files...");
+    setLoadingStatus("Preparing Gemma 4 model files...");
   }
 }
 
