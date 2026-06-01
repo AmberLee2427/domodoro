@@ -203,7 +203,7 @@
     }
 
     .chat-actions {
-      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-columns: 1fr 1fr;
     }
 
     .progress-track {
@@ -479,6 +479,7 @@
           <div id="chat-box"></div>
           <input type="text" id="chat-input" placeholder="Talk back...">
           <div id="model-status">Model not loaded.</div>
+          <label><input type="checkbox" id="voice-toggle" checked> Speak Dom replies</label>
           <label for="backend-select">Model Backend</label>
           <select id="backend-select">
             <option value="auto">Auto</option>
@@ -487,6 +488,7 @@
           </select>
           <div class="actions chat-actions">
             <button id="warm-btn">Summon Dom</button>
+            <button id="voice-input-btn" type="button">Dictate</button>
             <button id="purge-cache-btn">Purge Cache</button>
             <button id="send-btn" class="primary">Send</button>
           </div>
@@ -508,6 +510,6 @@
       if (status) status.textContent = `Startup error: ${reason}`;
     });
   </script>
-  <script type="module" src="app.js?v=32"></script>
+  <script type="module" src="app.js?v=33"></script>
 </body>
 </html>

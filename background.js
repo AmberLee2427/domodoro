@@ -5,6 +5,7 @@ const LAST_POSE_KEY = "domodoro-last-pose";
 const CHAT_LOG_LIMIT = 20;
 const DEFAULT_WORK_MINUTES = 25;
 const DEFAULT_BREAK_MINUTES = 5;
+const DEFAULT_VOICE_ENABLED = true;
 const DEFAULT_BLACKLIST = [
   "youtube.com",
   "reddit.com",
@@ -110,6 +111,30 @@ function characterSummary(key) {
 
 function characterFolder(key) {
   return (CHARACTERS[key] || CHARACTERS.default).folder;
+}
+
+function speechText(value) {
+  return String(value || "")
+    .replace(/\*\*?|__?|`/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function speakDomodoro(text, options = {}) {
+  const data = await chrome.storage.local.get(["voiceEnabled", "voiceRate", "voicePitch"]);
+  if (data.voiceEnabled === false || !chrome.tts?.speak) return;
+
+  const utterance = speechText(text);
+  if (!utterance) return;
+
+  chrome.tts.stop?.();
+  chrome.tts.speak(utterance, {
+    enqueue: false,
+    rate: Number.isFinite(data.voiceRate) ? data.voiceRate : 0.9,
+    pitch: Number.isFinite(data.voicePitch) ? data.voicePitch : 0.72,
+    volume: 1,
+    ...options,
+  });
 }
 
 function normalizeChatEntry(entry) {
@@ -321,6 +346,9 @@ chrome.runtime.onInstalled.addListener(async () => {
     "outfit",
     "blacklistEnabled",
     "blacklistedSites",
+    "voiceEnabled",
+    "voiceRate",
+    "voicePitch",
   ]);
   await chrome.storage.local.set({
     isActive: data.isActive ?? true,
@@ -333,6 +361,9 @@ chrome.runtime.onInstalled.addListener(async () => {
     blacklistedSites: Array.isArray(data.blacklistedSites) && data.blacklistedSites.length
       ? data.blacklistedSites
       : DEFAULT_BLACKLIST,
+    voiceEnabled: data.voiceEnabled ?? DEFAULT_VOICE_ENABLED,
+    voiceRate: data.voiceRate ?? 0.9,
+    voicePitch: data.voicePitch ?? 0.72,
     timerRunning: false,
     sessionEndAt: null,
   });
@@ -390,6 +421,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
         },
       ]);
       await notifyActiveTab(reply.text, reply.pose, prefs.outfit);
+      await speakDomodoro(reply.text).catch(() => {});
       if (completedMode === "work") {
         await chrome.storage.local.set({
           completedSessions: state.completedSessions + 1,
@@ -487,8 +519,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           },
         ]);
 
+        await speakDomodoro(reply.text).catch(() => {});
         sendResponse({ text: reply.text, pose: reply.pose });
       } catch (error) {
+        await speakDomodoro("Forbidden site detected. Close the tab, trouble.").catch(() => {});
         sendResponse({
           text: `Forbidden site detected. Close the tab, trouble.`,
           pose: "stern",
@@ -496,6 +530,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
       }
     })();
+    return true;
+  }
+
+  if (request.action === "speak_text") {
+    speakDomodoro(request.text, request.options)
+      .then(() => sendResponse({ ok: true }))
+      .catch((error) => sendResponse({ ok: false, error: error.message || String(error) }));
     return true;
   }
 

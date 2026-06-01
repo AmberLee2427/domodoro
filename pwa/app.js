@@ -91,6 +91,8 @@ const warmBtn = document.getElementById("warm-btn");
 const purgeCacheBtn = document.getElementById("purge-cache-btn");
 const backendSelect = document.getElementById("backend-select");
 const sendBtn = document.getElementById("send-btn");
+const voiceInputBtn = document.getElementById("voice-input-btn");
+const voiceToggle = document.getElementById("voice-toggle");
 const chatInput = document.getElementById("chat-input");
 const chatBox = document.getElementById("chat-box");
 const modelStatus = document.getElementById("model-status");
@@ -109,6 +111,8 @@ let loadingStatus = {
 let preferredBackend = localStorage.getItem(BACKEND_KEY) || "auto";
 let activeModelDevice = resolveModelDevice();
 let state = loadState();
+let speechRecognition;
+let isDictating = false;
 
 const CHARACTERS = {
   default: {
@@ -154,6 +158,7 @@ function loadState() {
     character: saved.character || "default",
     pose: normalizePose(saved.pose),
     todo: saved.todo || "",
+    voiceEnabled: saved.voiceEnabled !== false,
     completedSessions: Number.isFinite(saved.completedSessions) ? saved.completedSessions : 0,
     chatLog: Array.isArray(saved.chatLog) ? saved.chatLog.slice(-CHAT_LOG_LIMIT) : [],
     endAt: null,
@@ -169,6 +174,7 @@ function saveState() {
     character: state.character,
     pose: state.pose,
     todo: state.todo,
+    voiceEnabled: state.voiceEnabled,
     completedSessions: state.completedSessions,
     chatLog: state.chatLog,
   }));
@@ -214,6 +220,56 @@ function setPose(pose) {
   state.pose = normalizePose(pose);
   domPortrait.src = posePath(state.character, state.pose);
   saveState();
+}
+
+function speechText(value) {
+  return String(value || "")
+    .replace(/\*\*?|__?|`/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function speakDomodoro(text) {
+  if (!state.voiceEnabled || !("speechSynthesis" in window)) return;
+  const utteranceText = speechText(text);
+  if (!utteranceText) return;
+
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(utteranceText);
+  utterance.rate = 0.9;
+  utterance.pitch = 0.72;
+  utterance.volume = 1;
+  window.speechSynthesis.speak(utterance);
+}
+
+function SpeechRecognitionCtor() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition;
+}
+
+function ensureSpeechRecognition() {
+  const Recognition = SpeechRecognitionCtor();
+  if (!Recognition) return null;
+  if (speechRecognition) return speechRecognition;
+
+  speechRecognition = new Recognition();
+  speechRecognition.continuous = false;
+  speechRecognition.interimResults = true;
+  speechRecognition.lang = navigator.language || "en-US";
+  speechRecognition.onresult = (event) => {
+    const transcript = Array.from(event.results)
+      .map((result) => result[0]?.transcript || "")
+      .join("")
+      .trim();
+    if (transcript) chatInput.value = transcript;
+  };
+  speechRecognition.onend = () => {
+    isDictating = false;
+    if (voiceInputBtn) voiceInputBtn.textContent = "Dictate";
+  };
+  speechRecognition.onerror = (event) => {
+    setModelStatus(`Dictation failed: ${event.error || "microphone unavailable"}`);
+  };
+  return speechRecognition;
 }
 
 function normalizeChatEntry(entry) {
@@ -302,6 +358,7 @@ function render() {
   personaInput.value = state.persona;
   characterSelect.value = state.character;
   todoNote.value = state.todo;
+  if (voiceToggle) voiceToggle.checked = state.voiceEnabled;
   domPortrait.src = posePath(state.character, state.pose);
   avatarImg.src = headshotPath(state.character);
   characterProgressBar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
@@ -781,6 +838,7 @@ async function handleSessionComplete() {
   setPose(reply.pose);
   appendChatEntry({ role: "assistant", content: reply.text, pose: reply.pose });
   appendChatEntry({ role: "tool", name: "set_pose", content: reply.pose });
+  speakDomodoro(reply.text);
   notify(reply.text);
   if (completedMode === "work") {
     state.completedSessions += 1;
@@ -843,6 +901,7 @@ async function sendChat() {
     setPose(reply.pose);
     appendChatEntry({ role: "assistant", content: reply.text, pose: reply.pose });
     appendChatEntry({ role: "tool", name: "set_pose", content: reply.pose });
+    speakDomodoro(reply.text);
   } catch (error) {
     setModelStatus(describeError(error));
   } finally {
@@ -862,6 +921,13 @@ breakMinutesInput.addEventListener("change", saveSettings);
 personaInput.addEventListener("input", saveSettings);
 characterSelect.addEventListener("change", saveSettings);
 todoNote.addEventListener("input", saveSettings);
+voiceToggle?.addEventListener("change", () => {
+  state.voiceEnabled = voiceToggle.checked;
+  saveState();
+  if (!state.voiceEnabled && "speechSynthesis" in window) {
+    window.speechSynthesis.cancel();
+  }
+});
 if (backendSelect) {
   backendSelect.addEventListener("change", () => {
     preferredBackend = backendSelect.value;
@@ -873,6 +939,23 @@ if (backendSelect) {
     setModelStatus(`Backend set to ${resolveModelDevice().toUpperCase()}. Summon Dom to load with this backend.`);
   });
 }
+if (!SpeechRecognitionCtor() && voiceInputBtn) {
+  voiceInputBtn.disabled = true;
+  voiceInputBtn.title = "Speech recognition is not available in this browser.";
+}
+voiceInputBtn?.addEventListener("click", () => {
+  const recognition = ensureSpeechRecognition();
+  if (!recognition) return;
+
+  if (isDictating) {
+    recognition.stop();
+    return;
+  }
+
+  isDictating = true;
+  voiceInputBtn.textContent = "Listening";
+  recognition.start();
+});
 domPortrait.addEventListener("error", () => {
   domPortrait.src = "../assets/characters/default/default.png";
 });

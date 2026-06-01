@@ -41,6 +41,13 @@ function blacklistPose() {
   return BLACKLIST_POSES[Math.floor(Math.random() * BLACKLIST_POSES.length)];
 }
 
+function askDomodoroToSpeak(text) {
+  chrome.runtime.sendMessage({
+    action: "speak_text",
+    text,
+  }).catch(() => {});
+}
+
 function showDomodoroPopup(request) {
     document.querySelectorAll("[data-domodoro-popup='true']").forEach((element) => element.remove());
 
@@ -210,11 +217,13 @@ async function maybeInterruptBlacklistedSite(force = false) {
       character: data.outfit || "default",
     });
   } catch {
+    const message = blacklistMessage();
     showDomodoroPopup({
-      message: blacklistMessage(),
+      message,
       pose: blacklistPose(),
       character: data.outfit || "default",
     });
+    askDomodoroToSpeak(message);
   }
 }
 

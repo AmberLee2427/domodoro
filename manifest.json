@@ -13,7 +13,8 @@
     "activeTab",
     "scripting",
     "alarms",
-    "offscreen"
+    "offscreen",
+    "tts"
   ],
   "host_permissions": [
     "<all_urls>",

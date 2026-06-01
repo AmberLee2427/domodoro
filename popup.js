@@ -10,6 +10,7 @@ const timerDisplay = document.getElementById('timer-display');
 const sendBtn = document.getElementById('send-btn');
 const warmBtn = document.getElementById('warm-btn');
 const purgeCacheBtn = document.getElementById('purge-cache-btn');
+const voiceInputBtn = document.getElementById('voice-input-btn');
 const chatInput = document.getElementById('chat-input');
 const chatBox = document.getElementById('chat-box');
 const modelStatus = document.getElementById('model-status');
@@ -25,6 +26,7 @@ const outfitNextUnlock = document.getElementById('outfit-next-unlock');
 const todoInput = document.getElementById('todo-input');
 const blacklistToggle = document.getElementById('blacklist-toggle');
 const blacklistInput = document.getElementById('blacklist-input');
+const voiceToggle = document.getElementById('voice-toggle');
 const POSES = ['default', 'thinking', 'stern', 'pointing', 'approval', 'beckon'];
 const DEFAULT_BLACKLIST = [
   'youtube.com',
@@ -69,6 +71,38 @@ const CHARACTERS = {
 };
 
 let currentPose = 'default';
+let speechRecognition;
+let isDictating = false;
+
+function SpeechRecognitionCtor() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition;
+}
+
+function ensureSpeechRecognition() {
+  const Recognition = SpeechRecognitionCtor();
+  if (!Recognition) return null;
+  if (speechRecognition) return speechRecognition;
+
+  speechRecognition = new Recognition();
+  speechRecognition.continuous = false;
+  speechRecognition.interimResults = true;
+  speechRecognition.lang = navigator.language || 'en-US';
+  speechRecognition.onresult = (event) => {
+    const transcript = Array.from(event.results)
+      .map((result) => result[0]?.transcript || '')
+      .join('')
+      .trim();
+    if (transcript) chatInput.value = transcript;
+  };
+  speechRecognition.onend = () => {
+    isDictating = false;
+    if (voiceInputBtn) voiceInputBtn.textContent = 'Dictate';
+  };
+  speechRecognition.onerror = (event) => {
+    renderStatus({ state: 'error', detail: `Dictation failed: ${event.error || 'microphone unavailable'}`, progress: 0 });
+  };
+  return speechRecognition;
+}
 
 function normalizePose(value) {
   return POSES.includes(value) ? value : 'default';
@@ -314,6 +348,7 @@ chrome.storage.local.get([
   'completedSessions',
   'blacklistEnabled',
   'blacklistedSites',
+  'voiceEnabled',
 ], (data) => {
   if (data.isActive !== undefined) activeToggle.checked = data.isActive;
   if (data.completedSessions !== undefined) timerState.completedSessions = data.completedSessions;
@@ -324,6 +359,7 @@ chrome.storage.local.get([
   blacklistInput.value = Array.isArray(data.blacklistedSites) && data.blacklistedSites.length
     ? data.blacklistedSites.join('\n')
     : DEFAULT_BLACKLIST.join('\n');
+  voiceToggle.checked = data.voiceEnabled !== false;
   renderCharacters();
   refreshChatLog().catch(() => {});
 });
@@ -370,6 +406,29 @@ blacklistInput.addEventListener('input', (event) => {
     .map((site) => site.trim())
     .filter(Boolean);
   chrome.storage.local.set({ blacklistedSites });
+});
+
+voiceToggle.addEventListener('change', (event) => {
+  chrome.storage.local.set({ voiceEnabled: event.target.checked });
+});
+
+if (!SpeechRecognitionCtor() && voiceInputBtn) {
+  voiceInputBtn.disabled = true;
+  voiceInputBtn.title = 'Speech recognition is not available in this browser.';
+}
+
+voiceInputBtn?.addEventListener('click', () => {
+  const recognition = ensureSpeechRecognition();
+  if (!recognition) return;
+
+  if (isDictating) {
+    recognition.stop();
+    return;
+  }
+
+  isDictating = true;
+  voiceInputBtn.textContent = 'Listening';
+  recognition.start();
 });
 
 async function sendChat() {
