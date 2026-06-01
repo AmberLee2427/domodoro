@@ -51,7 +51,7 @@ env.fetch = (resource, options = {}) => {
     : options;
 
   const freshUrl = cacheBustedModelUrl(url);
-  setModelStatus(`Fetching fresh model file: ${freshUrl.split("/").pop()?.split("?")[0] || "model file"}`, true);
+  setLoadingStatus(`Fetching fresh model file: ${freshUrl.split("/").pop()?.split("?")[0] || "model file"}`);
 
   return fetch(freshUrl, {
     ...requestInit,
@@ -94,6 +94,8 @@ let generator;
 let generatorPromise;
 let notificationTimer;
 let loadingProgress = 0;
+let loadingStatusText = "";
+let loadingStatusLastPaint = 0;
 let preferredBackend = localStorage.getItem(BACKEND_KEY) || "auto";
 let activeModelDevice = resolveModelDevice();
 let compileStartedAt = 0;
@@ -332,6 +334,16 @@ function setModelStatus(text, loading = false) {
   sendBtn.disabled = loading;
 }
 
+function setLoadingStatus(text, { force = false } = {}) {
+  const now = Date.now();
+  if (!force && text === loadingStatusText) return;
+  if (!force && now - loadingStatusLastPaint < 500) return;
+
+  loadingStatusText = text;
+  loadingStatusLastPaint = now;
+  setModelStatus(text, true);
+}
+
 function stopCompileStatus() {
   clearInterval(compileStatusTimer);
   compileStatusTimer = undefined;
@@ -341,12 +353,13 @@ function stopCompileStatus() {
 function startCompileStatus(device) {
   stopCompileStatus();
   compileStartedAt = Date.now();
+  setLoadingStatus(`Compiling ${device.toUpperCase()} session...`, { force: true });
   compileStatusTimer = setInterval(() => {
     const seconds = Math.floor((Date.now() - compileStartedAt) / 1000);
     const warning = seconds >= 120
       ? " If this does not finish, the phone likely has enough storage but not enough GPU/RAM headroom for this local Gemma 4 session."
       : "";
-    setModelStatus(`Compiling ${device.toUpperCase()} session... ${seconds}s elapsed.${warning}`, true);
+    setLoadingStatus(`Compiling ${device.toUpperCase()} session... ${seconds}s elapsed.${warning}`, { force: true });
   }, 1000);
 }
 
@@ -376,18 +389,18 @@ function updateLoadingProgress(info, device) {
   if (info.status === "progress_total") {
     const percent = Number.isFinite(info.progress) ? Math.round(info.progress) : loadingProgress;
     loadingProgress = Math.max(loadingProgress, percent);
-    setModelStatus(`Downloading model bundle ${loadingProgress}%`, true);
+    setLoadingStatus(`Downloading model bundle ${loadingProgress}%`, { force: loadingProgress >= 100 });
     return;
   }
 
   if (info.status === "ready") {
-    setModelStatus(`Preparing ${info.file || info.name || MODEL_ID}`, true);
+    setLoadingStatus(`Preparing model files...`, { force: true });
     return;
   }
 
   if (info.status !== "progress") {
     if (info.status) {
-      setModelStatus(`${info.status}: ${info.file || info.name || MODEL_ID}`, true);
+      setLoadingStatus(`${info.status}: ${info.file || info.name || MODEL_ID}`);
     }
     return;
   }
@@ -396,7 +409,7 @@ function updateLoadingProgress(info, device) {
   const steppedPercent = Math.min(100, Math.max(loadingProgress, Math.floor(percent / 5) * 5));
 
   if (steppedPercent <= loadingProgress && info.file) {
-    setModelStatus(`Downloading ${info.file} ${percent || ""}%`, true);
+    setLoadingStatus(`Downloading model files ${loadingProgress}%`);
     return;
   }
 
@@ -407,7 +420,7 @@ function updateLoadingProgress(info, device) {
   const loadingLabel = isCompiling
     ? `Compiling ${device.toUpperCase()} session...`
     : `Downloading ${loadingProgress}%`;
-  setModelStatus(loadingLabel, true);
+  setLoadingStatus(loadingLabel, { force: isCompiling });
 }
 
 function describeError(error) {
@@ -558,6 +571,8 @@ async function getGenerator() {
 
   if (!generatorPromise) {
     loadingProgress = 0;
+    loadingStatusText = "";
+    loadingStatusLastPaint = 0;
     stopCompileStatus();
     const loadWithDevice = async (device, statusLabel) => {
       activeModelDevice = device;
