@@ -10,6 +10,7 @@ const MODEL_DOWNLOAD_BYTES = 3.3 * 1024 * 1024 * 1024;
 const MODEL_STORAGE_HEADROOM = 1.35;
 const STORAGE_KEY = "domodoro-pwa-state";
 const BACKEND_KEY = "domodoro-model-backend";
+const FRESH_FETCH_KEY = "domodoro-force-fresh-model-fetch";
 const CHAT_LOG_KEY = "chatLog";
 const CHAT_LOG_LIMIT = 20;
 const POSES = ["default", "thinking", "stern", "pointing", "approval", "beckon"];
@@ -17,6 +18,16 @@ const POSES = ["default", "thinking", "stern", "pointing", "approval", "beckon"]
 env.allowLocalModels = false;
 env.allowRemoteModels = true;
 env.useWasmCache = false;
+env.fetch = (resource, options = {}) => {
+  const url = typeof resource === "string" ? resource : resource?.url || "";
+  const shouldForceFresh = localStorage.getItem(FRESH_FETCH_KEY) === "true"
+    && /huggingface\.co|hf\.co|xethub|onnx-community|gemma/i.test(url);
+
+  return fetch(resource, {
+    ...options,
+    cache: shouldForceFresh ? "reload" : options.cache,
+  });
+};
 if (env.backends?.onnx?.wasm) {
   env.backends.onnx.wasm.wasmPaths = {
     mjs: new URL("../vendor/onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs", import.meta.url).href,
@@ -453,6 +464,7 @@ async function purgeModelCache() {
   generator = undefined;
   generatorPromise = undefined;
   loadingProgress = 0;
+  localStorage.setItem(FRESH_FETCH_KEY, "true");
 
   let deletedEntries = 0;
   let deletedCaches = 0;
@@ -480,7 +492,7 @@ async function purgeModelCache() {
   }
 
   setModelStatus(
-    `Model cache purged. Removed ${deletedCaches} cache bucket(s) and ${deletedEntries} model request(s). Checked ${checkedEntries} app cache request(s). ${cacheDetails.join(" ")} Summon Dom to try again.`,
+    `Model cache purged. Removed ${deletedCaches} cache bucket(s) and ${deletedEntries} model request(s). Checked ${checkedEntries} app cache request(s). ${cacheDetails.join(" ")} The next summon will bypass the browser HTTP cache.`,
   );
 }
 
@@ -523,6 +535,7 @@ async function getGenerator() {
       })
       .then((loadedGenerator) => {
         generator = loadedGenerator;
+        localStorage.removeItem(FRESH_FETCH_KEY);
         stopCompileStatus();
         setModelStatus(`${MODEL_ID} is ready (${activeModelDevice})`);
         return loadedGenerator;
