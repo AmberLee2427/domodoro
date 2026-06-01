@@ -594,16 +594,14 @@ async function getGenerator() {
       activeModelDevice = device;
       setModelStatus(statusLabel, true);
       await ensureStorageRoom();
-      const progress_callback = (info) => updateLoadingProgress(info, device);
-      const [loadedProcessor, loadedModel] = await Promise.all([
-        AutoProcessor.from_pretrained(MODEL_ID, { progress_callback }),
-        Gemma4ForConditionalGeneration.from_pretrained(MODEL_ID, {
-          dtype: MODEL_DTYPE,
-          device,
-          progress_callback,
-        }),
-      ]);
-      processor = loadedProcessor;
+      setLoadingStatus("Preparing Gemma 4 processor...", { force: true });
+      processor = await AutoProcessor.from_pretrained(MODEL_ID);
+      setLoadingStatus("Loading Gemma 4 model files...", { force: true });
+      const loadedModel = await Gemma4ForConditionalGeneration.from_pretrained(MODEL_ID, {
+        dtype: MODEL_DTYPE,
+        device,
+        progress_callback: (info) => updateLoadingProgress(info, device),
+      });
       return loadedModel;
     };
 
