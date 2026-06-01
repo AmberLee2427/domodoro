@@ -19,6 +19,7 @@ const POSES = ["default", "thinking", "stern", "pointing", "approval", "beckon"]
 env.allowLocalModels = false;
 env.allowRemoteModels = true;
 env.useWasmCache = false;
+env.useBrowserCache = false;
 function cacheBustedModelUrl(url) {
   const freshToken = localStorage.getItem(FRESH_FETCH_TOKEN_KEY) || String(Date.now());
   const parsedUrl = new URL(url);
@@ -49,7 +50,10 @@ env.fetch = (resource, options = {}) => {
       }
     : options;
 
-  return fetch(cacheBustedModelUrl(url), {
+  const freshUrl = cacheBustedModelUrl(url);
+  setModelStatus(`Fetching fresh model file: ${freshUrl.split("/").pop()?.split("?")[0] || "model file"}`, true);
+
+  return fetch(freshUrl, {
     ...requestInit,
     cache: "reload",
   });
@@ -369,12 +373,32 @@ function quotaErrorMessage(available, needed, quota, usage, persisted) {
 }
 
 function updateLoadingProgress(info, device) {
-  if (info.status !== "progress") return;
+  if (info.status === "progress_total") {
+    const percent = Number.isFinite(info.progress) ? Math.round(info.progress) : loadingProgress;
+    loadingProgress = Math.max(loadingProgress, percent);
+    setModelStatus(`Downloading model bundle ${loadingProgress}%`, true);
+    return;
+  }
+
+  if (info.status === "ready") {
+    setModelStatus(`Preparing ${info.file || info.name || MODEL_ID}`, true);
+    return;
+  }
+
+  if (info.status !== "progress") {
+    if (info.status) {
+      setModelStatus(`${info.status}: ${info.file || info.name || MODEL_ID}`, true);
+    }
+    return;
+  }
 
   const percent = info.total ? Math.round((info.loaded / info.total) * 100) : loadingProgress;
   const steppedPercent = Math.min(100, Math.max(loadingProgress, Math.floor(percent / 5) * 5));
 
-  if (steppedPercent <= loadingProgress) return;
+  if (steppedPercent <= loadingProgress && info.file) {
+    setModelStatus(`Downloading ${info.file} ${percent || ""}%`, true);
+    return;
+  }
 
   loadingProgress = steppedPercent;
   const isCompiling = loadingProgress >= 100;
