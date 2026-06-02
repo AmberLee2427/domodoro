@@ -215,6 +215,33 @@ function buildConversationPrompt(chatLog, requestText, persona, outfit, todo) {
   ].join("\n");
 }
 
+function buildTimerPrompt(chatLog, completedMode, state, persona, outfit, todo) {
+  const transcript = chatLog.length > 0
+    ? chatLog.map(formatChatEntry).join("\n")
+    : "No prior messages.";
+  const taskNote = String(todo || "").trim() || "No written task note. Improvise from the timer.";
+  const isFocusComplete = completedMode === "work";
+  const currentInstruction = isFocusComplete
+    ? `The user JUST FINISHED a ${state.workMinutes} minute focus session. Tell them to take a ${state.breakMinutes} minute break now. Do not tell them to keep working or return to work.`
+    : `The user's ${state.breakMinutes} minute break JUST ENDED. Tell them to return to work now. Do not tell them to take a break.`;
+  const poseHint = isFocusComplete ? "approval or beckon" : "stern or pointing";
+
+  return [
+    `Persona: ${persona}. Outfit: ${outfit}.`,
+    `User's sticky note: ${taskNote}`,
+    "",
+    "CURRENT TIMER EVENT - this overrides older chat history:",
+    currentInstruction,
+    "",
+    "Older chat log for style and continuity only:",
+    transcript,
+    "",
+    `Choose one pose from ${POSES.join(", ")}. Best pose category: ${poseHint}.`,
+    "Return JSON only: {\"pose\":\"approval\",\"text\":\"...\"}.",
+    "No markdown and no extra keys.",
+  ].join("\n");
+}
+
 async function getChatLog() {
   const data = await chrome.storage.local.get([CHAT_LOG_KEY]);
   return Array.isArray(data[CHAT_LOG_KEY]) ? data[CHAT_LOG_KEY].map(normalizeChatEntry) : [];
@@ -375,23 +402,6 @@ async function notifyActiveTab(message, pose = "default", character = "default")
   }
 }
 
-async function deliverTimerTransition(reply, outfit) {
-  await appendChatEntries([
-    {
-      role: "assistant",
-      content: reply.text,
-      pose: reply.pose,
-    },
-    {
-      role: "tool",
-      name: "set_pose",
-      content: reply.pose,
-    },
-  ]);
-  await notifyActiveTab(reply.text, reply.pose, outfit);
-  await speakDomodoro(reply.text).catch(() => {});
-}
-
 // Set up defaults on install without clobbering existing settings.
 chrome.runtime.onInstalled.addListener(async () => {
   const data = await chrome.storage.local.get([
@@ -445,41 +455,39 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
       const transitionRequest = completedMode === "work"
         ? `Timer event: the user finished a ${state.workMinutes} minute focus session and should take a ${state.breakMinutes} minute break now.`
         : `Timer event: the user's ${state.breakMinutes} minute break is over and they should get back to work now.`;
-      const fallback = completedMode === "work"
-        ? fallbackReply("focusComplete", "approval")
-        : fallbackReply("breakOver", "pointing");
+      let reply;
+
+      try {
+        await appendChatEntries([
+          {
+            role: "system",
+            content: transitionRequest,
+          },
+        ]);
+        const chatLog = await getChatLog();
+        reply = await generateDomodoroReply(
+          buildTimerPrompt(chatLog, completedMode, state, customPersona, outfit, todo),
+        );
+      } catch {
+        reply = completedMode === "work"
+          ? fallbackReply("focusComplete", "approval")
+          : fallbackReply("breakOver", "pointing");
+      }
 
       await appendChatEntries([
         {
-          role: "system",
-          content: transitionRequest,
+          role: "assistant",
+          content: reply.text,
+          pose: reply.pose,
+        },
+        {
+          role: "tool",
+          name: "set_pose",
+          content: reply.pose,
         },
       ]);
-      await deliverTimerTransition(fallback, prefs.outfit);
-
-      try {
-        const chatLog = await getChatLog();
-        const reply = await generateDomodoroReply(
-          buildConversationPrompt(chatLog, transitionRequest, customPersona, outfit, todo),
-        );
-        if (reply.text && reply.text !== fallback.text) {
-          await appendChatEntries([
-            {
-              role: "assistant",
-              content: reply.text,
-              pose: reply.pose,
-            },
-            {
-              role: "tool",
-              name: "set_pose",
-              content: reply.pose,
-            },
-          ]);
-        }
-      } catch {
-        // The local fallback already notified the user. Model generation is optional here.
-      }
-
+      await notifyActiveTab(reply.text, reply.pose, prefs.outfit);
+      await speakDomodoro(reply.text).catch(() => {});
       if (completedMode === "work") {
         await chrome.storage.local.set({
           completedSessions: state.completedSessions + 1,

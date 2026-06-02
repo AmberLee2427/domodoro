@@ -760,7 +760,7 @@ function buildMessages(userMessage) {
         "Keep responses short, theatrical, possessive, and commanding, but stay PG-13. " +
         "You will receive the full chat log and latest request in the user message. " +
         `You must choose one pose from: ${POSES.join(", ")}. ` +
-        "Respond with compact JSON only, exactly like {\"pose\":\"stern\",\"text\":\"Back to work, trouble.\"}. " +
+        "Respond with compact JSON only, exactly like {\"pose\":\"stern\",\"text\":\"Yes, trouble.\"}. " +
         "No markdown and no extra keys.",
     },
     { role: "user", content: userMessage },
@@ -875,6 +875,33 @@ function buildConversationPrompt(requestText) {
   ].join("\n");
 }
 
+function buildTimerPrompt(completedMode, requestText) {
+  const character = CHARACTERS[state.character] || CHARACTERS.default;
+  const todo = state.todo.trim() || "No written tasks. Improvise based on the timer.";
+  const isFocusComplete = completedMode === "work";
+  const currentInstruction = isFocusComplete
+    ? `The user JUST FINISHED a ${state.workMinutes} minute focus session. Tell them to take a ${state.breakMinutes} minute break now. Do not tell them to keep working or return to work.`
+    : `The user's ${state.breakMinutes} minute break JUST ENDED. Tell them to return to work now. Do not tell them to take a break.`;
+  const poseHint = isFocusComplete ? "approval or beckon" : "stern or pointing";
+
+  return [
+    `Persona: ${state.persona}.`,
+    `Current character: ${character.label} - ${character.subtitle}.`,
+    `User's todo/context note: ${todo}`,
+    "",
+    "CURRENT TIMER EVENT - this overrides older chat history:",
+    currentInstruction,
+    "",
+    "Older chat log for style and continuity only:",
+    chatLogBlock(),
+    "",
+    `Original event text: ${requestText}`,
+    `Choose one pose from ${POSES.join(", ")}. Best pose category: ${poseHint}.`,
+    "Return JSON only: {\"pose\":\"approval\",\"text\":\"...\"}.",
+    "No markdown and no extra keys.",
+  ].join("\n");
+}
+
 function notify(text) {
   if ("Notification" in window && Notification.permission === "granted") {
     new Notification("Domodoro", {
@@ -896,7 +923,7 @@ async function handleSessionComplete() {
     ? fallbackReply("focusComplete", "approval")
     : fallbackReply("breakOver", "pointing");
   try {
-    reply = await generateLine(buildConversationPrompt(requestText));
+    reply = await generateLine(buildTimerPrompt(completedMode, requestText));
   } catch (error) {
     setModelStatus(describeError(error));
   }
