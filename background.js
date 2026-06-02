@@ -43,6 +43,33 @@ const CHARACTERS = {
   },
 };
 
+const FALLBACK_LINES = {
+  focusComplete: [
+    "Focus complete, trouble. Take the break before I start counting your excuses.",
+    "Good. You did the thing. Now take your break like you were told.",
+    "Session finished. Stretch, hydrate, and do not negotiate with the clock.",
+    "Acceptable work. Break time.",
+  ],
+  breakOver: [
+    "Break is over, trouble. Back to work.",
+    "Up. The little vacation has expired.",
+    "Enough drifting. Return to the task.",
+    "Your break has concluded. Sit down and behave.",
+  ],
+  blacklist: [
+    "Forbidden site detected. Close the tab, trouble.",
+    "Cute detour. Close it and return to the work.",
+    "That tab is not part of the agreement.",
+    "No wandering. Back to your task.",
+  ],
+  chat: [
+    "The model is unavailable, but I am still watching. Try again in a moment.",
+    "Dom is not fully summoned yet. Continue anyway.",
+    "The voice in the machine is busy. The task is not.",
+    "Technical difficulty. Moral clarity remains: get back to work.",
+  ],
+};
+
 let creatingOffscreenDocument;
 
 async function ensureOffscreenDocument() {
@@ -97,7 +124,7 @@ async function generateDomodoroLine(userMessage, maxNewTokens = 70) {
     maxNewTokens,
   });
 
-  return response?.text || "Break time, trouble. Up.";
+  return response?.text || randomFallback("chat");
 }
 
 function normalizePose(value) {
@@ -113,6 +140,18 @@ function characterFolder(key) {
   return (CHARACTERS[key] || CHARACTERS.default).folder;
 }
 
+function randomFallback(kind) {
+  const lines = FALLBACK_LINES[kind] || FALLBACK_LINES.chat;
+  return lines[Math.floor(Math.random() * lines.length)];
+}
+
+function fallbackReply(kind, pose = "default") {
+  return {
+    text: randomFallback(kind),
+    pose: normalizePose(pose),
+  };
+}
+
 function speechText(value) {
   return String(value || "")
     .replace(/\*\*?|__?|`/g, "")
@@ -121,7 +160,7 @@ function speechText(value) {
 }
 
 async function speakDomodoro(text, options = {}) {
-  const data = await chrome.storage.local.get(["voiceEnabled", "voiceRate", "voicePitch"]);
+  const data = await chrome.storage.local.get(["voiceEnabled", "voiceName", "voiceRate", "voicePitch"]);
   if (data.voiceEnabled === false || !chrome.tts?.speak) return;
 
   const utterance = speechText(text);
@@ -130,6 +169,7 @@ async function speakDomodoro(text, options = {}) {
   chrome.tts.stop?.();
   chrome.tts.speak(utterance, {
     enqueue: false,
+    voiceName: data.voiceName || undefined,
     rate: Number.isFinite(data.voiceRate) ? data.voiceRate : 0.9,
     pitch: Number.isFinite(data.voicePitch) ? data.voicePitch : 0.72,
     volume: 1,
@@ -209,7 +249,7 @@ function parseDomodoroReply(rawText) {
       const parsed = JSON.parse(jsonMatch[0]);
       const text = parsed.text || parsed.response || parsed.message || "";
       return {
-        text: String(text).trim() || "Break time, trouble. Up.",
+        text: String(text).trim() || randomFallback("chat"),
         pose: normalizePose(parsed.pose),
       };
     } catch {
@@ -224,7 +264,7 @@ function parseDomodoroReply(rawText) {
     .trim();
 
   return {
-    text: text || "Break time, trouble. Up.",
+    text: text || randomFallback("chat"),
     pose: normalizePose(poseMatch?.[1]),
   };
 }
@@ -335,6 +375,23 @@ async function notifyActiveTab(message, pose = "default", character = "default")
   }
 }
 
+async function deliverTimerTransition(reply, outfit) {
+  await appendChatEntries([
+    {
+      role: "assistant",
+      content: reply.text,
+      pose: reply.pose,
+    },
+    {
+      role: "tool",
+      name: "set_pose",
+      content: reply.pose,
+    },
+  ]);
+  await notifyActiveTab(reply.text, reply.pose, outfit);
+  await speakDomodoro(reply.text).catch(() => {});
+}
+
 // Set up defaults on install without clobbering existing settings.
 chrome.runtime.onInstalled.addListener(async () => {
   const data = await chrome.storage.local.get([
@@ -347,6 +404,7 @@ chrome.runtime.onInstalled.addListener(async () => {
     "blacklistEnabled",
     "blacklistedSites",
     "voiceEnabled",
+    "voiceName",
     "voiceRate",
     "voicePitch",
   ]);
@@ -362,6 +420,7 @@ chrome.runtime.onInstalled.addListener(async () => {
       ? data.blacklistedSites
       : DEFAULT_BLACKLIST,
     voiceEnabled: data.voiceEnabled ?? DEFAULT_VOICE_ENABLED,
+    voiceName: data.voiceName ?? "",
     voiceRate: data.voiceRate ?? 0.9,
     voicePitch: data.voicePitch ?? 0.72,
     timerRunning: false,
@@ -386,42 +445,41 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
       const transitionRequest = completedMode === "work"
         ? `Timer event: the user finished a ${state.workMinutes} minute focus session and should take a ${state.breakMinutes} minute break now.`
         : `Timer event: the user's ${state.breakMinutes} minute break is over and they should get back to work now.`;
-      let reply;
-
-      try {
-        await appendChatEntries([
-          {
-            role: "system",
-            content: transitionRequest,
-          },
-        ]);
-        const chatLog = await getChatLog();
-        reply = await generateDomodoroReply(
-          buildConversationPrompt(chatLog, transitionRequest, customPersona, outfit, todo),
-        );
-      } catch {
-        reply = {
-          text: completedMode === "work"
-            ? `Focus complete, trouble. Take your ${state.breakMinutes} minute break.`
-            : "Break is over. Back to work.",
-          pose: completedMode === "work" ? "approval" : "pointing",
-        };
-      }
+      const fallback = completedMode === "work"
+        ? fallbackReply("focusComplete", "approval")
+        : fallbackReply("breakOver", "pointing");
 
       await appendChatEntries([
         {
-          role: "assistant",
-          content: reply.text,
-          pose: reply.pose,
-        },
-        {
-          role: "tool",
-          name: "set_pose",
-          content: reply.pose,
+          role: "system",
+          content: transitionRequest,
         },
       ]);
-      await notifyActiveTab(reply.text, reply.pose, prefs.outfit);
-      await speakDomodoro(reply.text).catch(() => {});
+      await deliverTimerTransition(fallback, prefs.outfit);
+
+      try {
+        const chatLog = await getChatLog();
+        const reply = await generateDomodoroReply(
+          buildConversationPrompt(chatLog, transitionRequest, customPersona, outfit, todo),
+        );
+        if (reply.text && reply.text !== fallback.text) {
+          await appendChatEntries([
+            {
+              role: "assistant",
+              content: reply.text,
+              pose: reply.pose,
+            },
+            {
+              role: "tool",
+              name: "set_pose",
+              content: reply.pose,
+            },
+          ]);
+        }
+      } catch {
+        // The local fallback already notified the user. Model generation is optional here.
+      }
+
       if (completedMode === "work") {
         await chrome.storage.local.set({
           completedSessions: state.completedSessions + 1,
@@ -472,13 +530,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         sendResponse({ text: reply.text, pose: reply.pose });
       } catch (error) {
+        const reply = fallbackReply("chat", "thinking");
         await appendChatEntries([
           {
             role: "system",
             content: `System malfunction: ${error.message || String(error)}`,
           },
+          {
+            role: "assistant",
+            content: reply.text,
+            pose: reply.pose,
+          },
+          {
+            role: "tool",
+            name: "set_pose",
+            content: reply.pose,
+          },
         ]).catch(() => {});
-        sendResponse({ text: `*System malfunction:* ${error.message || String(error)}` });
+        await speakDomodoro(reply.text).catch(() => {});
+        sendResponse({ text: reply.text, pose: reply.pose, error: error.message || String(error) });
       }
     })();
     return true; // Keep channel open for async response
@@ -522,10 +592,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         await speakDomodoro(reply.text).catch(() => {});
         sendResponse({ text: reply.text, pose: reply.pose });
       } catch (error) {
-        await speakDomodoro("Forbidden site detected. Close the tab, trouble.").catch(() => {});
+        const reply = fallbackReply("blacklist", "stern");
+        await speakDomodoro(reply.text).catch(() => {});
         sendResponse({
-          text: `Forbidden site detected. Close the tab, trouble.`,
-          pose: "stern",
+          text: reply.text,
+          pose: reply.pose,
           error: error.message || String(error),
         });
       }
@@ -537,6 +608,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     speakDomodoro(request.text, request.options)
       .then(() => sendResponse({ ok: true }))
       .catch((error) => sendResponse({ ok: false, error: error.message || String(error) }));
+    return true;
+  }
+
+  if (request.action === "get_tts_voices") {
+    if (!chrome.tts?.getVoices) {
+      sendResponse({ voices: [] });
+      return false;
+    }
+
+    chrome.tts.getVoices((voices) => {
+      sendResponse({ voices: voices || [] });
+    });
     return true;
   }
 

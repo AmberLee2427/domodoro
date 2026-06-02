@@ -480,6 +480,10 @@
           <input type="text" id="chat-input" placeholder="Talk back...">
           <div id="model-status">Model not loaded.</div>
           <label><input type="checkbox" id="voice-toggle" checked> Speak Dom replies</label>
+          <label for="voice-select">Voice</label>
+          <select id="voice-select">
+            <option value="">System Default</option>
+          </select>
           <label for="backend-select">Model Backend</label>
           <select id="backend-select">
             <option value="auto">Auto</option>
@@ -510,6 +514,6 @@
       if (status) status.textContent = `Startup error: ${reason}`;
     });
   </script>
-  <script type="module" src="app.js?v=33"></script>
+  <script type="module" src="app.js?v=35"></script>
 </body>
 </html>

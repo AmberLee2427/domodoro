@@ -93,6 +93,7 @@ const backendSelect = document.getElementById("backend-select");
 const sendBtn = document.getElementById("send-btn");
 const voiceInputBtn = document.getElementById("voice-input-btn");
 const voiceToggle = document.getElementById("voice-toggle");
+const voiceSelect = document.getElementById("voice-select");
 const chatInput = document.getElementById("chat-input");
 const chatBox = document.getElementById("chat-box");
 const modelStatus = document.getElementById("model-status");
@@ -147,6 +148,27 @@ const CHARACTERS = {
   },
 };
 
+const FALLBACK_LINES = {
+  focusComplete: [
+    "Focus complete, trouble. Take the break before I start counting your excuses.",
+    "Good. You did the thing. Now take your break like you were told.",
+    "Session finished. Stretch, hydrate, and do not negotiate with the clock.",
+    "Acceptable work. Break time.",
+  ],
+  breakOver: [
+    "Break is over, trouble. Back to work.",
+    "Up. The little vacation has expired.",
+    "Enough drifting. Return to the task.",
+    "Your break has concluded. Sit down and behave.",
+  ],
+  chat: [
+    "The model is unavailable, but I am still watching. Try again in a moment.",
+    "Dom is not fully summoned yet. Continue anyway.",
+    "The voice in the machine is busy. The task is not.",
+    "Technical difficulty. Moral clarity remains: get back to work.",
+  ],
+};
+
 function loadState() {
   const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
   return {
@@ -159,6 +181,7 @@ function loadState() {
     pose: normalizePose(saved.pose),
     todo: saved.todo || "",
     voiceEnabled: saved.voiceEnabled !== false,
+    voiceURI: saved.voiceURI || "",
     completedSessions: Number.isFinite(saved.completedSessions) ? saved.completedSessions : 0,
     chatLog: Array.isArray(saved.chatLog) ? saved.chatLog.slice(-CHAT_LOG_LIMIT) : [],
     endAt: null,
@@ -175,6 +198,7 @@ function saveState() {
     pose: state.pose,
     todo: state.todo,
     voiceEnabled: state.voiceEnabled,
+    voiceURI: state.voiceURI,
     completedSessions: state.completedSessions,
     chatLog: state.chatLog,
   }));
@@ -222,11 +246,51 @@ function setPose(pose) {
   saveState();
 }
 
+function randomFallback(kind) {
+  const lines = FALLBACK_LINES[kind] || FALLBACK_LINES.chat;
+  return lines[Math.floor(Math.random() * lines.length)];
+}
+
+function fallbackReply(kind, pose = "default") {
+  return {
+    text: randomFallback(kind),
+    pose: normalizePose(pose),
+  };
+}
+
 function speechText(value) {
   return String(value || "")
     .replace(/\*\*?|__?|`/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function availableVoices() {
+  return "speechSynthesis" in window ? window.speechSynthesis.getVoices() : [];
+}
+
+function selectedSpeechVoice() {
+  if (!state.voiceURI) return null;
+  return availableVoices().find((voice) => voice.voiceURI === state.voiceURI) || null;
+}
+
+function voiceLabel(voice) {
+  return [
+    voice.name,
+    voice.lang,
+    voice.localService === false ? "remote" : "",
+  ].filter(Boolean).join(" · ");
+}
+
+function renderVoiceOptions() {
+  if (!voiceSelect) return;
+  const voices = availableVoices();
+  const options = ['<option value="">System Default</option>']
+    .concat(voices.map((voice) => {
+      const selected = voice.voiceURI === state.voiceURI ? " selected" : "";
+      return `<option value="${escapeHtml(voice.voiceURI)}"${selected}>${escapeHtml(voiceLabel(voice))}</option>`;
+    }));
+  voiceSelect.innerHTML = options.join("");
 }
 
 function speakDomodoro(text) {
@@ -236,6 +300,8 @@ function speakDomodoro(text) {
 
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(utteranceText);
+  const voice = selectedSpeechVoice();
+  if (voice) utterance.voice = voice;
   utterance.rate = 0.9;
   utterance.pitch = 0.72;
   utterance.volume = 1;
@@ -359,6 +425,7 @@ function render() {
   characterSelect.value = state.character;
   todoNote.value = state.todo;
   if (voiceToggle) voiceToggle.checked = state.voiceEnabled;
+  if (voiceSelect) voiceSelect.value = state.voiceURI;
   domPortrait.src = posePath(state.character, state.pose);
   avatarImg.src = headshotPath(state.character);
   characterProgressBar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
@@ -733,7 +800,7 @@ function parseDomResponse(rawText) {
       const parsed = JSON.parse(jsonMatch[0]);
       const text = parsed.text || parsed.response || parsed.message || "";
       return {
-        text: String(text).trim() || "Break time, trouble. Up.",
+        text: String(text).trim() || randomFallback("chat"),
         pose: normalizePose(parsed.pose),
       };
     } catch {
@@ -748,7 +815,7 @@ function parseDomResponse(rawText) {
     .trim();
 
   return {
-    text: text || "Break time, trouble. Up.",
+    text: text || randomFallback("chat"),
     pose: normalizePose(poseMatch?.[1]),
   };
 }
@@ -825,10 +892,9 @@ async function handleSessionComplete() {
 
   appendChatEntry({ role: "system", content: requestText });
 
-  let reply = {
-    text: completedMode === "work" ? "Break time, trouble." : "Back to work, trouble.",
-    pose: "default",
-  };
+  let reply = completedMode === "work"
+    ? fallbackReply("focusComplete", "approval")
+    : fallbackReply("breakOver", "pointing");
   try {
     reply = await generateLine(buildConversationPrompt(requestText));
   } catch (error) {
@@ -903,7 +969,12 @@ async function sendChat() {
     appendChatEntry({ role: "tool", name: "set_pose", content: reply.pose });
     speakDomodoro(reply.text);
   } catch (error) {
+    const reply = fallbackReply("chat", "thinking");
     setModelStatus(describeError(error));
+    setPose(reply.pose);
+    appendChatEntry({ role: "assistant", content: reply.text, pose: reply.pose });
+    appendChatEntry({ role: "tool", name: "set_pose", content: reply.pose });
+    speakDomodoro(reply.text);
   } finally {
     sendBtn.disabled = false;
   }
@@ -927,6 +998,11 @@ voiceToggle?.addEventListener("change", () => {
   if (!state.voiceEnabled && "speechSynthesis" in window) {
     window.speechSynthesis.cancel();
   }
+});
+voiceSelect?.addEventListener("change", () => {
+  state.voiceURI = voiceSelect.value;
+  saveState();
+  speakDomodoro(state.voiceURI ? "Voice selected." : "System default voice selected.");
 });
 if (backendSelect) {
   backendSelect.addEventListener("change", () => {
@@ -999,6 +1075,11 @@ if ("Notification" in window && Notification.permission === "default") {
 
 render();
 renderChatLog();
+renderVoiceOptions();
+
+if ("speechSynthesis" in window) {
+  window.speechSynthesis.addEventListener("voiceschanged", renderVoiceOptions);
+}
 
 const startupProblem = webGpuProblem();
 if (startupProblem) {

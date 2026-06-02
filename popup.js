@@ -27,6 +27,7 @@ const todoInput = document.getElementById('todo-input');
 const blacklistToggle = document.getElementById('blacklist-toggle');
 const blacklistInput = document.getElementById('blacklist-input');
 const voiceToggle = document.getElementById('voice-toggle');
+const voiceSelect = document.getElementById('voice-select');
 const POSES = ['default', 'thinking', 'stern', 'pointing', 'approval', 'beckon'];
 const DEFAULT_BLACKLIST = [
   'youtube.com',
@@ -73,6 +74,7 @@ const CHARACTERS = {
 let currentPose = 'default';
 let speechRecognition;
 let isDictating = false;
+let selectedVoiceName = '';
 
 function SpeechRecognitionCtor() {
   return window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -102,6 +104,37 @@ function ensureSpeechRecognition() {
     renderStatus({ state: 'error', detail: `Dictation failed: ${event.error || 'microphone unavailable'}`, progress: 0 });
   };
   return speechRecognition;
+}
+
+function voiceLabel(voice) {
+  const parts = [
+    voice.voiceName,
+    voice.lang,
+    voice.remote ? 'remote' : '',
+  ].filter(Boolean);
+  return parts.join(' · ');
+}
+
+async function loadVoiceOptions() {
+  if (!voiceSelect) return;
+
+  try {
+    const [{ voiceName }, response] = await Promise.all([
+      chrome.storage.local.get(['voiceName']),
+      chrome.runtime.sendMessage({ action: 'get_tts_voices' }),
+    ]);
+    selectedVoiceName = voiceName || '';
+    const voices = Array.isArray(response?.voices) ? response.voices : [];
+    const options = ['<option value="">System Default</option>']
+      .concat(voices.map((voice) => {
+        const name = escapeHtml(voice.voiceName || '');
+        const selected = voice.voiceName === selectedVoiceName ? ' selected' : '';
+        return `<option value="${name}"${selected}>${escapeHtml(voiceLabel(voice))}</option>`;
+      }));
+    voiceSelect.innerHTML = options.join('');
+  } catch {
+    voiceSelect.innerHTML = '<option value="">System Default</option>';
+  }
 }
 
 function normalizePose(value) {
@@ -349,6 +382,7 @@ chrome.storage.local.get([
   'blacklistEnabled',
   'blacklistedSites',
   'voiceEnabled',
+  'voiceName',
 ], (data) => {
   if (data.isActive !== undefined) activeToggle.checked = data.isActive;
   if (data.completedSessions !== undefined) timerState.completedSessions = data.completedSessions;
@@ -360,8 +394,10 @@ chrome.storage.local.get([
     ? data.blacklistedSites.join('\n')
     : DEFAULT_BLACKLIST.join('\n');
   voiceToggle.checked = data.voiceEnabled !== false;
+  selectedVoiceName = data.voiceName || '';
   renderCharacters();
   refreshChatLog().catch(() => {});
+  loadVoiceOptions().catch(() => {});
 });
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
@@ -410,6 +446,15 @@ blacklistInput.addEventListener('input', (event) => {
 
 voiceToggle.addEventListener('change', (event) => {
   chrome.storage.local.set({ voiceEnabled: event.target.checked });
+});
+
+voiceSelect?.addEventListener('change', (event) => {
+  selectedVoiceName = event.target.value;
+  chrome.storage.local.set({ voiceName: selectedVoiceName });
+  chrome.runtime.sendMessage({
+    action: 'speak_text',
+    text: selectedVoiceName ? 'Voice selected.' : 'System default voice selected.',
+  }).catch(() => {});
 });
 
 if (!SpeechRecognitionCtor() && voiceInputBtn) {
