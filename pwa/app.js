@@ -1,17 +1,12 @@
-import { AutoProcessor, env, Gemma4ForConditionalGeneration } from "../transformers.js";
+import { AutoTokenizer, env, Gemma4ForCausalLM } from "../transformers.js";
 
 const MODEL_ID = "onnx-community/gemma-4-E2B-it-ONNX";
-const MODEL_DTYPE = {
-  audio_encoder: "fp16",
-  vision_encoder: "fp16",
-  embed_tokens: "q4f16",
-  decoder_model_merged: "q4f16",
-};
+const MODEL_DTYPE = "q4f16";
 const FALLBACK_DEVICE = "wasm";
 const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 const HAS_WEBGPU = "gpu" in navigator;
 const DEFAULT_MODEL_DEVICE = HAS_WEBGPU && window.isSecureContext ? "webgpu" : FALLBACK_DEVICE;
-const MODEL_DOWNLOAD_BYTES = 3.3 * 1024 * 1024 * 1024;
+const MODEL_DOWNLOAD_BYTES = 1.35 * 1024 * 1024 * 1024;
 const MODEL_STORAGE_HEADROOM = 1.35;
 const STORAGE_KEY = "domodoro-pwa-state";
 const BACKEND_KEY = "domodoro-model-backend";
@@ -100,7 +95,7 @@ const modelStatus = document.getElementById("model-status");
 
 let generator;
 let generatorPromise;
-let processor;
+let tokenizer;
 let notificationTimer;
 let loadingStatus = {
   text: "",
@@ -656,7 +651,7 @@ async function showStorageDiagnostics() {
 async function purgeModelCache() {
   generator = undefined;
   generatorPromise = undefined;
-  processor = undefined;
+  tokenizer = undefined;
   resetLoadingTelemetry();
   localStorage.setItem(FRESH_FETCH_KEY, "true");
   localStorage.setItem(FRESH_FETCH_TOKEN_KEY, String(Date.now()));
@@ -706,10 +701,10 @@ async function getGenerator() {
       activeModelDevice = device;
       setModelStatus(statusLabel, true);
       await ensureStorageRoom();
-      setLoadingStatus("Preparing Gemma 4 processor...", { force: true });
-      processor = await AutoProcessor.from_pretrained(MODEL_ID);
+      setLoadingStatus("Preparing Gemma 4 tokenizer...", { force: true });
+      tokenizer = await AutoTokenizer.from_pretrained(MODEL_ID);
       setLoadingStatus("Loading Gemma 4 model files...", { force: true });
-      const loadedModel = await Gemma4ForConditionalGeneration.from_pretrained(MODEL_ID, {
+      const loadedModel = await Gemma4ForCausalLM.from_pretrained(MODEL_ID, {
         dtype: MODEL_DTYPE,
         device,
         progress_callback: (info) => updateLoadingProgress(info, device),
@@ -822,14 +817,15 @@ function parseDomResponse(rawText) {
 
 async function generateLine(prompt) {
   const model = await getGenerator();
-  if (!processor) throw new Error("Model processor is not loaded.");
+  if (!tokenizer) throw new Error("Model tokenizer is not loaded.");
 
   const messages = buildMessages(prompt);
-  const promptText = processor.apply_chat_template(messages, {
+  const promptText = tokenizer.apply_chat_template(messages, {
+    tokenize: false,
     add_generation_prompt: true,
     enable_thinking: false,
   });
-  const inputs = await processor(promptText, null, null, { add_special_tokens: false });
+  const inputs = await tokenizer(promptText, { add_special_tokens: false });
   const output = await model.generate({
     ...inputs,
     max_new_tokens: 110,
@@ -839,7 +835,7 @@ async function generateLine(prompt) {
     top_k: 64,
   });
   const promptLength = inputs.input_ids.dims.at(-1);
-  const decoded = processor.batch_decode(
+  const decoded = tokenizer.batch_decode(
     output.slice(null, [promptLength, null]),
     { skip_special_tokens: false },
   )[0];
@@ -1037,7 +1033,7 @@ if (backendSelect) {
     localStorage.setItem(BACKEND_KEY, preferredBackend);
     generator = undefined;
     generatorPromise = undefined;
-    processor = undefined;
+    tokenizer = undefined;
     resetLoadingTelemetry();
     setModelStatus(`Backend set to ${resolveModelDevice().toUpperCase()}. Summon Dom to load with this backend.`);
   });
