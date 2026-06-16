@@ -72,6 +72,7 @@ if (env.backends?.onnx?.wasm) {
 }
 
 const activeLabel = document.getElementById("active-label");
+const statusDot = document.getElementById("status-dot");
 const startBtn = document.getElementById("start-btn");
 const pauseBtn = document.getElementById("pause-btn");
 const resetBtn = document.getElementById("reset-btn");
@@ -403,6 +404,15 @@ function remainingMs() {
   return state.running && state.endAt ? state.endAt - Date.now() : durationMs();
 }
 
+function updateStatusDot() {
+  if (!statusDot) return;
+  if (generator) {
+    statusDot.classList.add("loaded");
+  } else {
+    statusDot.classList.remove("loaded");
+  }
+}
+
 function render() {
   const remaining = remainingMs();
   const character = CHARACTERS[state.character] || CHARACTERS.default;
@@ -425,7 +435,6 @@ function render() {
 
   timerDisplay.textContent = formatTime(remaining);
   modeLabel.textContent = state.mode === "break" ? "Break Session" : "Focus Session";
-  activeLabel.textContent = state.running ? "Running" : "Ready";
   startBtn.textContent = state.running ? "Restart" : "Start";
   pauseBtn.disabled = !state.running;
   if (backendSelect) backendSelect.value = preferredBackend;
@@ -456,7 +465,6 @@ function render() {
 
 function renderTimerTick() {
   timerDisplay.textContent = formatTime(remainingMs());
-  activeLabel.textContent = state.running ? "Running" : "Ready";
 }
 
 function appendChat(speaker, text) {
@@ -667,6 +675,7 @@ async function purgeModelCache() {
   generator = undefined;
   generatorPromise = undefined;
   tokenizer = undefined;
+  updateStatusDot();
   resetLoadingTelemetry();
   localStorage.setItem(FRESH_FETCH_KEY, "true");
   localStorage.setItem(FRESH_FETCH_TOKEN_KEY, String(Date.now()));
@@ -743,6 +752,7 @@ async function getGenerator() {
       })
       .then((loadedGenerator) => {
         generator = loadedGenerator;
+        updateStatusDot();
         localStorage.removeItem(FRESH_FETCH_KEY);
         localStorage.removeItem(FRESH_FETCH_TOKEN_KEY);
         stopCompileStatus();
@@ -752,6 +762,7 @@ async function getGenerator() {
       .catch((error) => {
         console.error("Domodoro model load failed", error);
         generatorPromise = undefined;
+        updateStatusDot();
         resetLoadingTelemetry();
         setModelStatus(describeError(error));
         throw error;
@@ -1049,6 +1060,7 @@ if (backendSelect) {
     generator = undefined;
     generatorPromise = undefined;
     tokenizer = undefined;
+    updateStatusDot();
     resetLoadingTelemetry();
     setModelStatus(`Backend set to ${resolveModelDevice().toUpperCase()}. Summon Dom to load with this backend.`);
   });
@@ -1115,6 +1127,7 @@ if ("Notification" in window && Notification.permission === "default") {
 }
 
 render();
+updateStatusDot();
 if (state.pose !== "default") {
   setPose(state.pose);
 }

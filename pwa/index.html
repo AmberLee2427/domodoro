@@ -108,6 +108,13 @@
       width: 9px;
       height: 9px;
       border-radius: 50%;
+      border: 2px solid var(--heart);
+      background: transparent;
+      box-shadow: none;
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+
+    .dot.loaded {
       background: var(--heart);
       box-shadow: 0 0 14px rgba(181, 139, 212, 0.68);
     }
@@ -461,7 +468,7 @@
   <main>
     <header>
       <div class="brand"><span class="brand-mark"></span><h1>Domodoro</h1></div>
-      <div class="status-pill"><span class="dot"></span><span id="active-label">Ready</span></div>
+      <div class="status-pill"><span class="dot" id="status-dot"></span><span id="active-label">Ready</span></div>
     </header>
 
     <div class="app-grid">
@@ -576,6 +583,6 @@
       if (status) status.textContent = `Startup error: ${reason}`;
     });
   </script>
-  <script type="module" src="app.js?v=41"></script>
+  <script type="module" src="app.js?v=42"></script>
 </body>
 </html>

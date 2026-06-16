@@ -92,6 +92,13 @@
       width: 8px;
       height: 8px;
       border-radius: 50%;
+      border: 2px solid var(--heart);
+      background: transparent;
+      box-shadow: none;
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+
+    .dot.loaded {
       background: var(--heart);
       box-shadow: 0 0 10px rgba(181, 139, 212, 0.65);
     }
@@ -414,7 +421,7 @@
 <body>
   <header>
     <div class="brand"><span class="brand-mark"></span><h1>Domodoro</h1></div>
-    <div class="status-pill"><span class="dot"></span><span id="active-label">Active</span></div>
+    <div class="status-pill"><span class="dot" id="status-dot"></span><span id="active-label">Ready</span></div>
   </header>
 
   <section class="panel timer-panel" data-title="Focus Console">

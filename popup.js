@@ -1,5 +1,6 @@
 const activeToggle = document.getElementById('active-toggle');
 const activeLabel = document.getElementById('active-label');
+const statusDot = document.getElementById('status-dot');
 const startBtn = document.getElementById('start-btn');
 const pauseBtn = document.getElementById('pause-btn');
 const resetBtn = document.getElementById('reset-btn');
@@ -300,7 +301,6 @@ function renderTimer() {
   timerDisplay.textContent = formatTime(remainingMs);
   modeLabel.textContent = timerState.mode === 'break' ? 'Break Session' : 'Focus Session';
   startBtn.textContent = timerState.running ? 'Restart' : 'Start';
-  activeLabel.textContent = timerState.isActive ? 'Active' : 'Paused';
   activeToggle.checked = timerState.isActive;
   pauseBtn.disabled = !timerState.running;
 }
@@ -320,6 +320,15 @@ async function sendRuntimeMessage(message) {
   return response;
 }
 
+function updateStatusDot(status) {
+  if (!statusDot) return;
+  if (status && status.state === 'ready') {
+    statusDot.classList.add('loaded');
+  } else {
+    statusDot.classList.remove('loaded');
+  }
+}
+
 function renderStatus(status) {
   if (!status) return;
 
@@ -330,6 +339,7 @@ function renderStatus(status) {
   sendBtn.disabled = status.state === 'loading';
   purgeCacheBtn.disabled = status.state === 'loading';
   warmBtn.disabled = status.state === 'loading' || status.state === 'ready';
+  updateStatusDot(status);
 }
 
 chrome.runtime.sendMessage({ action: 'get_model_status' }).then((response) => {
@@ -427,7 +437,6 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 activeToggle.addEventListener('change', async (event) => {
   const isActive = event.target.checked;
   await chrome.storage.local.set({ isActive });
-  activeLabel.textContent = isActive ? 'Active' : 'Paused';
 
   if (isActive) {
     await sendRuntimeMessage({ action: 'start_timer', mode: timerState.mode });
