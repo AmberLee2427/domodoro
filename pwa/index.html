@@ -417,6 +417,15 @@
       resize: vertical;
     }
 
+    .disabled-label {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .disabled-label input {
+      cursor: not-allowed;
+    }
+
     @media (max-width: 940px) {
       main {
         width: min(100%, 520px);
@@ -453,7 +462,7 @@
 
     <div class="app-grid">
       <aside>
-        <section class="panel" data-title="Assistant Settings">
+        <section class="panel" data-title="Aesthetics">
           <div class="avatar-row">
             <img id="avatar-img" class="avatar-preview" src="../assets/characters/default/headshot.png" alt="Domodoro avatar">
             <div>
@@ -474,6 +483,15 @@
         <section class="panel postit" data-title="Context Note">
           <label for="todo-note">Today's Terms</label>
           <textarea id="todo-note" placeholder="- Finish the thing&#10;- Drink water&#10;- No tab wandering"></textarea>
+        </section>
+
+        <section class="panel" data-title="Voice">
+          <label class="disabled-label"><input type="checkbox" id="voice-timer-toggle" disabled> Speak timer and interrupts (extension only)</label>
+          <label><input type="checkbox" id="voice-toggle" checked> Speak Dom replies</label>
+          <label for="voice-select">Voice</label>
+          <select id="voice-select">
+            <option value="">System Default</option>
+          </select>
         </section>
       </aside>
 
@@ -516,12 +534,11 @@
             <button id="voice-input-btn" type="button">Dictate</button>
             <button id="send-btn" class="primary">Send</button>
           </div>
+          <img id="dom-portrait" class="dom-portrait" src="../assets/characters/default/default.png" alt="">
+        </section>
+
+        <section class="panel" data-title="Model">
           <div id="model-status">Model not loaded.</div>
-          <label><input type="checkbox" id="voice-toggle" checked> Speak Dom replies</label>
-          <label for="voice-select">Voice</label>
-          <select id="voice-select">
-            <option value="">System Default</option>
-          </select>
           <label for="backend-select">Model Backend</label>
           <select id="backend-select">
             <option value="auto">Auto</option>
@@ -532,7 +549,6 @@
             <button id="warm-btn">Summon Dom</button>
             <button id="purge-cache-btn">Purge Cache</button>
           </div>
-          <img id="dom-portrait" class="dom-portrait" src="../assets/characters/default/default.png" alt="">
         </section>
       </aside>
     </div>
@@ -557,6 +573,6 @@
       if (status) status.textContent = `Startup error: ${reason}`;
     });
   </script>
-  <script type="module" src="app.js?v=39"></script>
+  <script type="module" src="app.js?v=40"></script>
 </body>
 </html>

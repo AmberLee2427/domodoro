@@ -26,7 +26,8 @@ const outfitNextUnlock = document.getElementById('outfit-next-unlock');
 const todoInput = document.getElementById('todo-input');
 const blacklistToggle = document.getElementById('blacklist-toggle');
 const blacklistInput = document.getElementById('blacklist-input');
-const voiceToggle = document.getElementById('voice-toggle');
+const voiceTimerToggle = document.getElementById('voice-timer-toggle');
+const voiceRepliesToggle = document.getElementById('voice-replies-toggle');
 const voiceSelect = document.getElementById('voice-select');
 const POSES = ['default', 'thinking', 'stern', 'pointing', 'approval', 'beckon'];
 const DEFAULT_BLACKLIST = [
@@ -395,7 +396,8 @@ chrome.storage.local.get([
   'completedSessions',
   'blacklistEnabled',
   'blacklistedSites',
-  'voiceEnabled',
+  'voiceTimerEnabled',
+  'voiceRepliesEnabled',
   'voiceName',
 ], (data) => {
   if (data.isActive !== undefined) activeToggle.checked = data.isActive;
@@ -407,7 +409,8 @@ chrome.storage.local.get([
   blacklistInput.value = Array.isArray(data.blacklistedSites) && data.blacklistedSites.length
     ? data.blacklistedSites.join('\n')
     : DEFAULT_BLACKLIST.join('\n');
-  voiceToggle.checked = data.voiceEnabled !== false;
+  if (voiceTimerToggle) voiceTimerToggle.checked = data.voiceTimerEnabled !== false;
+  if (voiceRepliesToggle) voiceRepliesToggle.checked = data.voiceRepliesEnabled !== false;
   selectedVoiceName = data.voiceName || '';
   renderCharacters();
   refreshChatLog().catch(() => {});
@@ -458,8 +461,12 @@ blacklistInput.addEventListener('input', (event) => {
   chrome.storage.local.set({ blacklistedSites });
 });
 
-voiceToggle.addEventListener('change', (event) => {
-  chrome.storage.local.set({ voiceEnabled: event.target.checked });
+voiceTimerToggle?.addEventListener('change', (event) => {
+  chrome.storage.local.set({ voiceTimerEnabled: event.target.checked });
+});
+
+voiceRepliesToggle?.addEventListener('change', (event) => {
+  chrome.storage.local.set({ voiceRepliesEnabled: event.target.checked });
 });
 
 voiceSelect?.addEventListener('change', (event) => {

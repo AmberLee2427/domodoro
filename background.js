@@ -160,8 +160,26 @@ function speechText(value) {
 }
 
 async function speakDomodoro(text, options = {}) {
-  const data = await chrome.storage.local.get(["voiceEnabled", "voiceName", "voiceRate", "voicePitch"]);
-  if (data.voiceEnabled === false || !chrome.tts?.speak) return;
+  const data = await chrome.storage.local.get([
+    "voiceEnabled",
+    "voiceTimerEnabled",
+    "voiceRepliesEnabled",
+    "voiceName",
+    "voiceRate",
+    "voicePitch",
+  ]);
+  if (!chrome.tts?.speak) return;
+
+  const voiceTimerEnabled = data.voiceTimerEnabled !== false;
+  const voiceRepliesEnabled = data.voiceRepliesEnabled !== false;
+
+  if (options.isTimer || options.isInterrupt) {
+    if (!voiceTimerEnabled) return;
+  } else if (options.isReply) {
+    if (!voiceRepliesEnabled) return;
+  } else {
+    if (data.voiceEnabled === false) return;
+  }
 
   const utterance = speechText(text);
   if (!utterance) return;
@@ -414,6 +432,8 @@ chrome.runtime.onInstalled.addListener(async () => {
     "blacklistEnabled",
     "blacklistedSites",
     "voiceEnabled",
+    "voiceTimerEnabled",
+    "voiceRepliesEnabled",
     "voiceName",
     "voiceRate",
     "voicePitch",
@@ -430,6 +450,8 @@ chrome.runtime.onInstalled.addListener(async () => {
       ? data.blacklistedSites
       : DEFAULT_BLACKLIST,
     voiceEnabled: data.voiceEnabled ?? DEFAULT_VOICE_ENABLED,
+    voiceTimerEnabled: data.voiceTimerEnabled ?? (data.voiceEnabled ?? DEFAULT_VOICE_ENABLED),
+    voiceRepliesEnabled: data.voiceRepliesEnabled ?? (data.voiceEnabled ?? DEFAULT_VOICE_ENABLED),
     voiceName: data.voiceName ?? "",
     voiceRate: data.voiceRate ?? 0.9,
     voicePitch: data.voicePitch ?? 0.72,
@@ -487,7 +509,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
         },
       ]);
       await notifyActiveTab(reply.text, reply.pose, prefs.outfit);
-      await speakDomodoro(reply.text).catch(() => {});
+      await speakDomodoro(reply.text, { isTimer: true }).catch(() => {});
       if (completedMode === "work") {
         await chrome.storage.local.set({
           completedSessions: state.completedSessions + 1,
@@ -536,6 +558,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           },
         ]);
 
+        await speakDomodoro(reply.text, { isReply: true }).catch(() => {});
         sendResponse({ text: reply.text, pose: reply.pose });
       } catch (error) {
         const reply = fallbackReply("chat", "thinking");
@@ -555,7 +578,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             content: reply.pose,
           },
         ]).catch(() => {});
-        await speakDomodoro(reply.text).catch(() => {});
+        await speakDomodoro(reply.text, { isReply: true }).catch(() => {});
         sendResponse({ text: reply.text, pose: reply.pose, error: error.message || String(error) });
       }
     })();
@@ -597,11 +620,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           },
         ]);
 
-        await speakDomodoro(reply.text).catch(() => {});
+        await speakDomodoro(reply.text, { isInterrupt: true }).catch(() => {});
         sendResponse({ text: reply.text, pose: reply.pose });
       } catch (error) {
         const reply = fallbackReply("blacklist", "stern");
-        await speakDomodoro(reply.text).catch(() => {});
+        await speakDomodoro(reply.text, { isInterrupt: true }).catch(() => {});
         sendResponse({
           text: reply.text,
           pose: reply.pose,
