@@ -1,12 +1,17 @@
-import { AutoTokenizer, env, Gemma4ForCausalLM } from "../transformers.js";
+import { AutoTokenizer, env, AutoModelForCausalLM } from "../transformers.js";
 
-const MODEL_ID = "onnx-community/gemma-4-E2B-it-ONNX";
+const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+const MODEL_ID = IS_MOBILE
+  ? "onnx-community/gemma-3-1b-it-ONNX"
+  : "onnx-community/gemma-4-E2B-it-ONNX";
+const MODEL_NAME = IS_MOBILE ? "Gemma 3" : "Gemma 4";
 const MODEL_DTYPE = "q4f16";
 const FALLBACK_DEVICE = "wasm";
-const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 const HAS_WEBGPU = "gpu" in navigator;
 const DEFAULT_MODEL_DEVICE = HAS_WEBGPU && window.isSecureContext ? "webgpu" : FALLBACK_DEVICE;
-const MODEL_DOWNLOAD_BYTES = 1.35 * 1024 * 1024 * 1024;
+const MODEL_DOWNLOAD_BYTES = IS_MOBILE
+  ? 0.55 * 1024 * 1024 * 1024
+  : 1.35 * 1024 * 1024 * 1024;
 const MODEL_STORAGE_HEADROOM = 1.35;
 const STORAGE_KEY = "domodoro-pwa-state";
 const BACKEND_KEY = "domodoro-model-backend";
@@ -486,7 +491,7 @@ function startCompileStatus(device, reason = "Download complete.") {
   loadingStatus.compileTimer = setInterval(() => {
     const seconds = Math.floor((Date.now() - loadingStatus.compileStartedAt) / 1000);
     const warning = seconds >= 120
-      ? " If this does not finish, the phone likely has enough storage but not enough GPU/RAM headroom for this local Gemma 4 session."
+      ? ` If this does not finish, the phone likely has enough storage but not enough GPU/RAM headroom for this local ${MODEL_NAME} session.`
       : "";
     setLoadingStatus(`Compiling ${device.toUpperCase()} session... ${seconds}s elapsed.${warning}`, { force: true });
   }, 1000);
@@ -537,7 +542,7 @@ function updateLoadingProgress(info, device) {
       const steppedPercent = Math.floor(nextPercent / 5) * 5;
       if (steppedPercent > loadingStatus.aggregatePercent) {
         loadingStatus.aggregatePercent = steppedPercent;
-        setLoadingStatus(`Downloading Gemma 4 model: ${loadingStatus.aggregatePercent}%`, { force: true });
+        setLoadingStatus(`Downloading ${MODEL_NAME} model: ${loadingStatus.aggregatePercent}%`, { force: true });
       }
     }
 
@@ -545,7 +550,7 @@ function updateLoadingProgress(info, device) {
   }
 
   if (info.status === "progress" && loadingStatus.aggregatePercent === 0) {
-    setLoadingStatus("Downloading Gemma 4 model...");
+    setLoadingStatus(`Downloading ${MODEL_NAME} model...`);
   }
 }
 
@@ -701,10 +706,10 @@ async function getGenerator() {
       activeModelDevice = device;
       setModelStatus(statusLabel, true);
       await ensureStorageRoom();
-      setLoadingStatus("Preparing Gemma 4 tokenizer...", { force: true });
+      setLoadingStatus(`Preparing ${MODEL_NAME} tokenizer...`, { force: true });
       tokenizer = await AutoTokenizer.from_pretrained(MODEL_ID);
-      setLoadingStatus("Loading Gemma 4 model files...", { force: true });
-      const loadedModel = await Gemma4ForCausalLM.from_pretrained(MODEL_ID, {
+      setLoadingStatus(`Loading ${MODEL_NAME} model files...`, { force: true });
+      const loadedModel = await AutoModelForCausalLM.from_pretrained(MODEL_ID, {
         dtype: MODEL_DTYPE,
         device,
         progress_callback: (info) => updateLoadingProgress(info, device),
