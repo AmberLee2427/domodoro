@@ -1,6 +1,7 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="utf-8">
   <style>
     :root {
       color-scheme: light;
@@ -377,6 +378,30 @@
       object-position: center;
       background: rgba(255, 255, 255, 0.55);
     }
+
+    footer {
+      margin-top: 18px;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 11px;
+      text-align: left;
+    }
+
+    footer a {
+      color: var(--muted);
+      text-decoration: none;
+      border-bottom: 1px dotted var(--muted);
+    }
+
+    footer a:hover {
+      color: var(--ink);
+      border-bottom-style: solid;
+    }
+
+    footer .divider {
+      margin: 0 6px;
+    }
   </style>
 </head>
 <body>
@@ -468,6 +493,14 @@
       <span id="outfit-next-unlock">Next: Default at 0</span>
     </div>
   </section>
+
+  <footer>
+    <a href="https://github.com/AmberLee2427/domodoro" target="_blank">GitHub</a>
+    <span class="divider">·</span>
+    <a href="https://github.com/AmberLee2427/domodoro/issues" target="_blank">Issues</a>
+    <span class="divider">·</span>
+    <a href="https://github.com/AmberLee2427/domodoro/blob/main/LICENSE" target="_blank">MIT License</a>
+  </footer>
 
   <script src="popup.js"></script>
 </body>

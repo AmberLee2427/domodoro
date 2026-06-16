@@ -198,12 +198,44 @@
     }
 
     .actions {
+      display: grid;
       grid-template-columns: 1.25fr 1fr 1fr;
       margin-top: 12px;
     }
 
     .chat-actions {
       grid-template-columns: 1fr 1fr;
+    }
+
+    .chat-input-actions {
+      grid-template-columns: 1fr 1fr;
+      margin-top: 2px;
+      margin-bottom: 14px;
+    }
+
+    footer {
+      margin-top: 40px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+      text-align: left;
+      padding-right: 170px;
+    }
+
+    footer a {
+      color: var(--muted);
+      text-decoration: none;
+      border-bottom: 1px dotted var(--muted);
+    }
+
+    footer a:hover {
+      color: var(--ink);
+      border-bottom-style: solid;
+    }
+
+    footer .divider {
+      margin: 0 8px;
     }
 
     .progress-track {
@@ -399,13 +431,15 @@
       }
 
       .dom-portrait {
-        position: static;
+        position: fixed;
+        right: max(10px, env(safe-area-inset-right));
+        bottom: max(0px, env(safe-area-inset-bottom));
+        width: min(35vw, 150px);
+        height: min(45vh, 220px);
         display: block;
-        width: min(42vw, 170px);
-        height: 210px;
-        margin: 12px 0 0 auto;
         opacity: 0.9;
-        z-index: 1;
+        z-index: 5;
+        pointer-events: none;
       }
     }
   </style>
@@ -478,6 +512,10 @@
         <section class="panel chat-panel" data-title="Dom Channel">
           <div id="chat-box"></div>
           <input type="text" id="chat-input" placeholder="Talk back...">
+          <div class="actions chat-input-actions">
+            <button id="voice-input-btn" type="button">Dictate</button>
+            <button id="send-btn" class="primary">Send</button>
+          </div>
           <div id="model-status">Model not loaded.</div>
           <label><input type="checkbox" id="voice-toggle" checked> Speak Dom replies</label>
           <label for="voice-select">Voice</label>
@@ -492,14 +530,19 @@
           </select>
           <div class="actions chat-actions">
             <button id="warm-btn">Summon Dom</button>
-            <button id="voice-input-btn" type="button">Dictate</button>
             <button id="purge-cache-btn">Purge Cache</button>
-            <button id="send-btn" class="primary">Send</button>
           </div>
           <img id="dom-portrait" class="dom-portrait" src="../assets/characters/default/default.png" alt="">
         </section>
       </aside>
     </div>
+    <footer>
+      <a href="https://github.com/AmberLee2427/domodoro" target="_blank">GitHub</a>
+      <span class="divider">·</span>
+      <a href="https://github.com/AmberLee2427/domodoro/issues" target="_blank">Issues</a>
+      <span class="divider">·</span>
+      <a href="https://github.com/AmberLee2427/domodoro/blob/main/LICENSE" target="_blank">MIT License</a>
+    </footer>
   </main>
 
   <script>
@@ -514,6 +557,6 @@
       if (status) status.textContent = `Startup error: ${reason}`;
     });
   </script>
-  <script type="module" src="app.js?v=37"></script>
+  <script type="module" src="app.js?v=39"></script>
 </body>
 </html>

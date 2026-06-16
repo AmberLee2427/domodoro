@@ -240,10 +240,20 @@ function headshotPath(characterKey = state.character) {
   return `../assets/characters/${character.folder}/headshot.png`;
 }
 
+let poseResetTimeout;
 function setPose(pose) {
   state.pose = normalizePose(pose);
   domPortrait.src = posePath(state.character, state.pose);
   saveState();
+
+  clearTimeout(poseResetTimeout);
+  if (state.pose !== "default") {
+    poseResetTimeout = setTimeout(() => {
+      state.pose = "default";
+      domPortrait.src = posePath(state.character, "default");
+      saveState();
+    }, 7000);
+  }
 }
 
 function randomFallback(kind) {
@@ -1102,6 +1112,9 @@ if ("Notification" in window && Notification.permission === "default") {
 }
 
 render();
+if (state.pose !== "default") {
+  setPose(state.pose);
+}
 renderChatLog();
 renderVoiceOptions();
 

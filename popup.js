@@ -151,15 +151,29 @@ function headshotPath(characterKey = outfitSelect.value) {
   return `assets/characters/${character.folder}/headshot.png`;
 }
 
+let poseResetTimeout;
 function setPose(pose) {
   currentPose = normalizePose(pose);
   characterStandee.src = posePath(outfitSelect.value, currentPose);
   chrome.storage.local.set({ [LAST_POSE_KEY]: currentPose });
+  triggerPoseCooldown();
 }
 
 function setPoseSilently(pose) {
   currentPose = normalizePose(pose);
   characterStandee.src = posePath(outfitSelect.value, currentPose);
+  triggerPoseCooldown();
+}
+
+function triggerPoseCooldown() {
+  clearTimeout(poseResetTimeout);
+  if (currentPose !== 'default') {
+    poseResetTimeout = setTimeout(() => {
+      currentPose = 'default';
+      characterStandee.src = posePath(outfitSelect.value, 'default');
+      chrome.storage.local.set({ [LAST_POSE_KEY]: 'default' });
+    }, 7000);
+  }
 }
 
 function renderChatEntry(entry) {
