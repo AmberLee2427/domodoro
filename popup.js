@@ -525,7 +525,8 @@ async function sendChat() {
 
 sendBtn.addEventListener('click', sendChat);
 chatInput.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter') {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
     sendChat();
   }
 });

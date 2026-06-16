@@ -1100,7 +1100,10 @@ if (purgeCacheBtn) {
 }
 sendBtn.addEventListener("click", sendChat);
 chatInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") sendChat();
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    sendChat();
+  }
 });
 
 setInterval(() => {

@@ -337,13 +337,20 @@
 
     #chat-box {
       height: min(48vh, 440px);
-      overflow-y: auto;
+      min-height: 100px;
+      overflow: auto;
       border: 1px solid var(--line);
       border-radius: 2px;
       background: rgba(255, 255, 255, 0.58);
       padding: 10px;
       margin-bottom: 10px;
       font-size: 14px;
+      resize: vertical;
+    }
+
+    #chat-input {
+      min-height: 42px;
+      resize: vertical;
     }
 
     .chat-line {
@@ -365,7 +372,6 @@
 
     .chat-panel {
       min-height: 560px;
-      overflow: hidden;
     }
 
     #model-status {
@@ -526,7 +532,7 @@
       <aside>
         <section class="panel chat-panel" data-title="Dom Channel">
           <div id="chat-box"></div>
-          <input type="text" id="chat-input" placeholder="Talk back...">
+          <textarea id="chat-input" placeholder="Talk back..." rows="2"></textarea>
           <div class="actions chat-input-actions">
             <button id="voice-input-btn" type="button">Dictate</button>
             <button id="send-btn" class="primary">Send</button>
@@ -570,6 +576,6 @@
       if (status) status.textContent = `Startup error: ${reason}`;
     });
   </script>
-  <script type="module" src="app.js?v=40"></script>
+  <script type="module" src="app.js?v=41"></script>
 </body>
 </html>

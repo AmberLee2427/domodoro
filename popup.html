@@ -269,13 +269,20 @@
 
     #chat-box {
       height: 108px;
-      overflow-y: auto;
+      min-height: 80px;
+      overflow: auto;
       border: 1px solid var(--line);
       border-radius: 2px;
       background: rgba(255, 255, 255, 0.58);
       padding: 8px;
       margin-bottom: 8px;
       font-size: 12px;
+      resize: vertical;
+    }
+
+    #chat-input {
+      min-height: 34px;
+      resize: vertical;
     }
 
     #blacklist-input {
@@ -474,7 +481,7 @@
 
   <section class="panel" data-title="Dom Channel">
     <div id="chat-box"></div>
-    <input type="text" id="chat-input" placeholder="Talk back...">
+    <textarea id="chat-input" placeholder="Talk back..." rows="2"></textarea>
     <div class="chat-actions">
       <button id="voice-input-btn" type="button">Dictate</button>
       <button id="send-btn" class="primary">Send</button>
