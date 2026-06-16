@@ -16,6 +16,7 @@ env.backends.onnx.wasm.proxy = false;
 
 let domodoroPipeline;
 let domodoroPipelinePromise;
+let aggregatePercent = 0;
 let modelStatus = {
   state: "idle",
   detail: `Ready to load ${MODEL_ID}`,
@@ -30,6 +31,7 @@ function setModelStatus(update) {
 async function purgeModelCache() {
   domodoroPipeline = undefined;
   domodoroPipelinePromise = undefined;
+  aggregatePercent = 0;
 
   let deletedEntries = 0;
   let deletedCaches = 0;
@@ -69,6 +71,7 @@ async function getPipeline() {
   }
 
   if (!domodoroPipelinePromise) {
+    aggregatePercent = 0;
     setModelStatus({ state: "loading", detail: `Loading ${MODEL_ID}`, progress: 0 });
 
     domodoroPipelinePromise = pipeline(
@@ -78,19 +81,38 @@ async function getPipeline() {
         dtype: MODEL_DTYPE,
         device: MODEL_DEVICE,
         progress_callback: (info) => {
-          if (info.status === "progress") {
-            const percent = info.total ? Math.round((info.loaded / info.total) * 100) : 0;
+          if (info.status === "progress_total") {
+            const percent = Number.isFinite(info.progress) ? Math.floor(info.progress) : aggregatePercent;
+
+            if (percent >= 100) {
+              aggregatePercent = 100;
+              setModelStatus({
+                state: "loading",
+                detail: "Downloaded; compiling WebGPU session...",
+                progress: 100,
+              });
+            } else {
+              const nextPercent = Math.max(aggregatePercent, Math.max(0, percent));
+              const steppedPercent = Math.floor(nextPercent / 5) * 5;
+              if (steppedPercent > aggregatePercent) {
+                aggregatePercent = steppedPercent;
+                setModelStatus({
+                  state: "loading",
+                  detail: `Downloading model: ${aggregatePercent}%`,
+                  progress: aggregatePercent,
+                });
+              }
+            }
+          } else if (info.status === "progress" && aggregatePercent === 0) {
             setModelStatus({
               state: "loading",
-              detail: percent >= 100
-                ? "Downloaded; compiling WebGPU session"
-                : `Downloading ${info.file || MODEL_ID}`,
-              progress: percent,
+              detail: "Downloading model...",
+              progress: 0,
             });
           } else if (info.status === "ready") {
             setModelStatus({
               state: "loading",
-              detail: `Preparing ${info.file || MODEL_ID}`,
+              detail: "Preparing model files...",
               progress: 100,
             });
           }
